@@ -377,7 +377,7 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
                                               return (
                                                   <button 
                                                     key={idx}
-                                                    onClick={() => {}}
+                                                    onClick={() => setQuizReveal(currentQuizIdx)}
                                                     className={`
                                                         p-8 rounded-3xl text-2xl md:text-3xl font-bold transition-all border-4 shadow-xl text-left relative overflow-hidden
                                                         ${isRevealed 

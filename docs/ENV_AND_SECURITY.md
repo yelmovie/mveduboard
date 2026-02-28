@@ -44,8 +44,17 @@
 
 ---
 
-## 3. 요약
+## 3. 비용 주의
+
+- **이미지**: 일일 업로드 한도 10장(로컬 쿼터). Supabase Storage 용량·과금 확인.
+- **OpenAI**: 호출은 사용자 액션당 1회(문장 다듬기, 빙고/단어찾기 등). 무한 루프 없음. 사용량·예산 알림 설정 권장.
+- 자세한 기능별 비용·한도는 `docs/FEATURE_AUDIT.md` 참고.
+
+---
+
+## 4. 요약
 
 - **필수**: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 - **AI 기능 사용 시**: `VITE_OPENAI_API_KEY`
 - **보안**: `.env.local` 미커밋, Supabase RLS 적용, 프로덕션에서는 OpenAI 호출을 백엔드로 이전 권장.
+- **기능·권한·보안 점검**: `docs/FEATURE_AUDIT.md` 참고.
