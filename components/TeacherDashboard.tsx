@@ -37,6 +37,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
   const [classId, setClassId] = useState<string | null>(null);
   const [onboardingWarning, setOnboardingWarning] = useState<string | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileModalReason, setProfileModalReason] = useState<'code' | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileForm, setProfileForm] = useState({
@@ -126,6 +127,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
       });
       alert('내 정보가 저장되었습니다.');
       setShowProfileModal(false);
+      setProfileModalReason(null);
       await loadJoinCode();
     } catch (err: any) {
       setProfileError(getErrorMessage(err, '정보 수정에 실패했습니다.'));
@@ -244,22 +246,33 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
             onClick={async () => {
               try {
                 const profile = await getCurrentUserProfile();
-                if (!profile?.class_id || !classId) {
-                  alert('학급 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
+                if (!profile) {
+                  setProfileModalReason('code');
+                  setShowProfileModal(true);
                   return;
                 }
+                if (!profile.class_id || !profile.school_id) {
+                  setProfileModalReason('code');
+                  setShowProfileModal(true);
+                  return;
+                }
+                const effectiveClassId = classId || profile.class_id;
                 const session = await getSession();
-                const userId = session?.user?.id;
+                const userId = session?.user?.id ?? profile.id;
                 if (!userId) {
                   alert('세션을 확인할 수 없습니다. 다시 로그인해주세요.');
                   return;
                 }
-                const updated = await regenerateJoinCodeByClassId(classId, userId);
+                const updated = await regenerateJoinCodeByClassId(effectiveClassId, userId);
                 if (!updated) {
                   alert('코드 재발급에 실패했습니다. 다시 시도해주세요.');
                   return;
                 }
+                setClassId(effectiveClassId);
                 setJoinCode(updated?.join_code || null);
+                if (updated?.join_code) {
+                  localStorage.setItem('edu_join_code', updated.join_code);
+                }
                 alert('새 입장 코드로 변경되었습니다.');
               } catch (err) {
                 alert(getErrorMessage(err, '입장 코드 변경에 실패했습니다.'));
@@ -417,11 +430,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
                 <div className="bg-gray-50 w-full max-w-md rounded-3xl shadow-2xl border border-gray-200">
                     <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                         <h2 className="font-bold text-lg text-gray-800">나의 정보 수정</h2>
-                        <button onClick={() => setShowProfileModal(false)} className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-200">
+                        <button onClick={() => { setShowProfileModal(false); setProfileModalReason(null); }} className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-200">
                             <X size={18} />
                         </button>
                     </div>
                     <div className="px-6 py-5 space-y-4">
+                        {profileModalReason === 'code' && (
+                            <div className="text-sm text-amber-800 font-bold bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+                                학급 코드를 발급하려면 아래 성함·학교명·학급명을 입력하고 저장해주세요.
+                            </div>
+                        )}
                         <div>
                             <label className="block text-sm font-bold text-gray-600 mb-1">성함</label>
                             <input
@@ -464,7 +482,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
                     <div className="px-6 pb-6 flex gap-2">
                         <button
                             type="button"
-                            onClick={() => setShowProfileModal(false)}
+                            onClick={() => { setShowProfileModal(false); setProfileModalReason(null); }}
                             className="h-12 flex-1 rounded-xl border border-gray-200 text-gray-600 font-bold hover:bg-gray-100"
                             disabled={profileLoading}
                         >

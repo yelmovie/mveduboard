@@ -1,7 +1,39 @@
 import { supabase } from './client';
+import { SUPABASE_URL } from '../../config/supabase';
 import { MAX_STUDENTS_PER_CLASS } from '../../constants/limits';
 import { getErrorMessage } from '../../utils/errors';
 import { generateUUID } from '../../utils/uuid';
+
+/** getSession/getUser가 실패할 때(다른 포트·도메인) localStorage에서 Supabase 세션 직접 읽기 */
+const getUserIdFromStorage = (): string | null => {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const projectRef = SUPABASE_URL ? SUPABASE_URL.replace(/^https?:\/\//, '').split('.')[0] : '';
+    const key = projectRef ? `sb-${projectRef}-auth-token` : null;
+    if (key) {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const data = JSON.parse(raw);
+        const user = data?.user ?? data?.currentSession?.user ?? data?.session?.user;
+        if (user?.id) return user.id;
+      }
+    }
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith('sb-') && k?.endsWith('-auth-token')) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const data = JSON.parse(raw);
+          const user = data?.user ?? data?.currentSession?.user ?? data?.session?.user;
+          if (user?.id) return user.id;
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+};
 
 const randomString = (length = 12) => {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -434,6 +466,9 @@ export const getCurrentUserProfile = async () => {
     const session = await getSession();
     userId = session?.user?.id ?? undefined;
   }
+  if (!userId) {
+    userId = getUserIdFromStorage() ?? undefined;
+  }
   if (!userId) return null;
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
   if (error) {
@@ -477,21 +512,39 @@ export const updateTeacherProfile = async ({
   className: string;
 }) => {
   if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
-  const profile = await getCurrentUserProfile();
-  // 프로덕션(Vercel 등)에서 getUser()가 실패할 수 있어, 세션·프로필을 fallback으로 사용
-  const { data: userData } = await supabase.auth.getUser();
-  const session = await getSession();
-  const userId = userData.user?.id ?? session?.user?.id ?? profile?.id;
 
-  // 프로필이 없거나, 선생님이 아니거나, 학교/학급이 아직 없으면 → 학교/학급 생성(및 프로필 생성·연결)
+  // 1) userId 확보: 세션 → getUser → localStorage 직접 읽기 (다른 포트/도메인에서도 동작하도록)
+  const session = await getSession();
+  let userId: string | null | undefined = session?.user?.id;
   if (!userId) {
-    throw new Error('로그인 정보를 확인할 수 없습니다. 다시 로그인해주세요.');
+    const { data: userData } = await supabase.auth.getUser();
+    userId = userData.user?.id ?? undefined;
   }
+  if (!userId) {
+    userId = getUserIdFromStorage();
+  }
+  if (!userId) {
+    throw new Error('로그인 정보를 확인할 수 없습니다. 이 페이지에서 다시 로그인해주세요.');
+  }
+
+  // 2) userId로 프로필 직접 조회 (getCurrentUserProfile이 null이어도 저장 가능하도록)
+  const { data: profile, error: profileFetchError } = await supabase
+    .from('profiles')
+    .select('id, role, school_id, class_id')
+    .eq('id', userId)
+    .maybeSingle();
+  if (profileFetchError) {
+    console.error('[updateTeacherProfile] profile fetch error:', profileFetchError);
+    throw new Error('프로필을 불러오지 못했습니다. 다시 시도해주세요.');
+  }
+
+  // 3) 프로필 없음 또는 학교/학급 미연결 → 학교·학급 생성(및 프로필 생성·연결)
   if (!profile || profile.role !== 'teacher' || !profile.class_id || !profile.school_id) {
     await createTeacherSchoolAndClass(userId, schoolName, className, displayName);
     return;
   }
 
+  // 4) 기존 프로필·학교·학급 수정
   const { error: profileError } = await supabase
     .from('profiles')
     .update({ display_name: displayName })
