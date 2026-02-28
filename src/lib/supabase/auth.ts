@@ -429,7 +429,11 @@ export const getSession = async () => {
 export const getCurrentUserProfile = async () => {
   if (!supabase) return null;
   const { data: userData } = await supabase.auth.getUser();
-  const userId = userData.user?.id;
+  let userId = userData.user?.id;
+  if (!userId) {
+    const session = await getSession();
+    userId = session?.user?.id ?? undefined;
+  }
   if (!userId) return null;
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
   if (error) {
@@ -474,8 +478,10 @@ export const updateTeacherProfile = async ({
 }) => {
   if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
   const profile = await getCurrentUserProfile();
+  // 프로덕션(Vercel 등)에서 getUser()가 실패할 수 있어, 세션·프로필을 fallback으로 사용
   const { data: userData } = await supabase.auth.getUser();
-  const userId = userData.user?.id;
+  const session = await getSession();
+  const userId = userData.user?.id ?? session?.user?.id ?? profile?.id;
 
   // 프로필이 없거나, 선생님이 아니거나, 학교/학급이 아직 없으면 → 학교/학급 생성(및 프로필 생성·연결)
   if (!userId) {
