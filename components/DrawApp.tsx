@@ -1,0 +1,419 @@
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Home, Settings, Play, RotateCcw, Users, Hash, Dices, Sparkles, Wand2, RefreshCw } from 'lucide-react';
+import * as drawService from '../services/drawService';
+
+interface DrawAppProps {
+  onBack: () => void;
+  isTeacherMode: boolean;
+}
+
+type DrawMode = 'number' | 'name';
+
+// --- 3D Card Component ---
+const MysticalCard: React.FC<{ content: string; isRevealed: boolean }> = ({ content, isRevealed }) => {
+    return (
+        <div className="group w-64 h-96 [perspective:1000px]">
+            <div className={`relative w-full h-full transition-all duration-1000 [transform-style:preserve-3d] ${isRevealed ? '[transform:rotateY(180deg)]' : ''}`}>
+                {/* Front (Hidden state) */}
+                <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-indigo-900 to-purple-900 rounded-2xl border-4 border-indigo-400/50 shadow-[0_0_30px_rgba(79,70,229,0.5)] flex items-center justify-center [backface-visibility:hidden]">
+                    <div className="text-6xl animate-pulse">🔮</div>
+                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-30"></div>
+                </div>
+
+                {/* Back (Revealed state) */}
+                <div className="absolute inset-0 w-full h-full bg-white rounded-2xl border-4 border-yellow-400 shadow-[0_0_50px_rgba(250,204,21,0.6)] flex items-center justify-center [transform:rotateY(180deg)] [backface-visibility:hidden] overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-b from-yellow-50 to-white"></div>
+                    <div className="relative z-10 text-center p-4">
+                        <div className="text-sm font-bold text-yellow-600 mb-2 uppercase tracking-widest">Selected</div>
+                        <div className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 break-keep leading-tight drop-shadow-sm">
+                            {content}
+                        </div>
+                    </div>
+                    {/* Confetti Effect inside card */}
+                    <div className="absolute inset-0 pointer-events-none">
+                        {[...Array(10)].map((_, i) => (
+                            <div key={i} className="absolute w-2 h-2 bg-yellow-400 rounded-full animate-ping" style={{ top: `${Math.random()*100}%`, left: `${Math.random()*100}%`, animationDelay: `${i*0.1}s` }}></div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
+  // Load initial state
+  const savedConfig = isTeacherMode ? drawService.getTeacherConfig() : null;
+  const sharedState = drawService.getDrawState();
+
+  // --- Setup State (Teacher Only) ---
+  const [setupMode, setSetupMode] = useState<DrawMode>(savedConfig?.setupMode || 'name');
+  const [numRange, setNumRange] = useState(savedConfig?.numRange || { min: 1, max: 30 });
+  const [nameList, setNameList] = useState<string[]>(savedConfig?.nameList || []);
+  const [nameInput, setNameInput] = useState(savedConfig?.nameList?.join('\n') || '');
+  
+  const [drawCount, setDrawCount] = useState(savedConfig?.drawCount || 1);
+  const [allowDuplicates, setAllowDuplicates] = useState(savedConfig?.allowDuplicates || false);
+  
+  // --- Runtime State ---
+  const [isPlaying, setIsPlaying] = useState(isTeacherMode ? (savedConfig?.isPlaying || false) : sharedState.isActive);
+  const [pool, setPool] = useState<string[]>(savedConfig?.pool || []); 
+  const [winners, setWinners] = useState<string[]>(isTeacherMode ? sharedState.result : []); 
+  const [isAnimating, setIsAnimating] = useState(false); 
+
+  // --- Student Sync State ---
+  const [remoteResult, setRemoteResult] = useState<string[]>(sharedState.result);
+  const [remoteAnimating, setRemoteAnimating] = useState(sharedState.isAnimating);
+
+  // --- Effects ---
+
+  // Polling for Student Sync
+  useEffect(() => {
+    if (!isTeacherMode) {
+      const interval = setInterval(() => {
+        const state = drawService.getDrawState();
+        setIsPlaying(state.isActive);
+        setRemoteResult(state.result);
+        setRemoteAnimating(state.isAnimating);
+      }, 500);
+      return () => clearInterval(interval);
+    }
+  }, [isTeacherMode]);
+
+  // Sync Teacher state to cloud
+  useEffect(() => {
+    if (isTeacherMode) {
+      drawService.updateDrawState({
+        isActive: isPlaying,
+        result: winners,
+        isAnimating: isAnimating
+      });
+
+      drawService.saveTeacherConfig({
+        setupMode,
+        numRange,
+        nameList,
+        drawCount,
+        allowDuplicates,
+        showAnimation: true, // Always true for mystical mode
+        pool,
+        isPlaying
+      });
+    }
+  }, [isPlaying, winners, isAnimating, isTeacherMode, setupMode, numRange, nameList, drawCount, allowDuplicates, pool]);
+
+  // --- Handlers ---
+
+  const handleAddClassRoster = () => {
+    const roster = drawService.getClassRoster();
+    setNameList(roster);
+    setNameInput(roster.join('\n'));
+  };
+
+  const handleNameInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setNameInput(e.target.value);
+    const names = e.target.value.split('\n').map(s => s.trim()).filter(s => s !== '');
+    setNameList(names);
+  };
+
+  const handleStartGame = () => {
+    let initialPool: string[] = [];
+    if (setupMode === 'number') {
+      for (let i = numRange.min; i <= numRange.max; i++) {
+        initialPool.push(i.toString());
+      }
+    } else {
+      if (nameList.length === 0) {
+        alert('이름을 입력해주세요!');
+        return;
+      }
+      initialPool = [...nameList];
+    }
+    
+    setPool(initialPool);
+    setWinners([]);
+    setIsPlaying(true);
+  };
+
+  const handlePick = () => {
+    if (pool.length === 0) {
+      alert('뽑을 대상이 없습니다! 초기화 버튼을 눌러주세요.');
+      return;
+    }
+
+    const countToPick = Math.min(drawCount, pool.length);
+    
+    setIsAnimating(true);
+    setWinners([]); // Clear previous winner to trigger flip back
+
+    // Animation Delay
+    setTimeout(() => {
+        // Actual Draw
+        const currentPool = [...pool];
+        const newWinners: string[] = [];
+
+        for (let i = 0; i < countToPick; i++) {
+            if (currentPool.length === 0) break;
+            const randomIndex = Math.floor(Math.random() * currentPool.length);
+            newWinners.push(currentPool[randomIndex]);
+            
+            if (!allowDuplicates) {
+                currentPool.splice(randomIndex, 1);
+            }
+        }
+
+        setWinners(newWinners);
+        setPool(currentPool);
+        setIsAnimating(false);
+    }, 2500); // 2.5s suspense
+  };
+
+  const handleResetPool = () => {
+    if (confirm('전체 명단을 초기화하시겠습니까?')) {
+        let initialPool: string[] = [];
+        if (setupMode === 'number') {
+            for (let i = numRange.min; i <= numRange.max; i++) {
+                initialPool.push(i.toString());
+            }
+        } else {
+            initialPool = [...nameList];
+        }
+        setPool(initialPool);
+        setWinners([]);
+    }
+  };
+
+  const handleBackToSetup = () => {
+      setIsPlaying(false);
+  }
+
+  // --- Views ---
+
+  // 1. Setup View (Teacher Only)
+  if (isTeacherMode && !isPlaying) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
+        <div className="bg-white w-full max-w-2xl rounded-3xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-violet-600 p-6 text-white flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-2 text-2xl font-bold font-hand">
+                    <Wand2 /> 신비한 발표 뽑기
+                </div>
+                <button onClick={onBack} className="bg-white/20 p-2 rounded-full hover:bg-white/30">
+                    <Home size={20} />
+                </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-8">
+                {/* Mode */}
+                <div className="flex bg-gray-100 p-1 rounded-xl">
+                    <button 
+                        onClick={() => setSetupMode('name')}
+                        className={`flex-1 py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${setupMode === 'name' ? 'bg-white text-violet-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        <Users size={20} /> 이름 뽑기
+                    </button>
+                    <button 
+                        onClick={() => setSetupMode('number')}
+                        className={`flex-1 py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${setupMode === 'number' ? 'bg-white text-violet-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        <Hash size={20} /> 번호 뽑기
+                    </button>
+                </div>
+
+                {/* Content Input */}
+                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    {setupMode === 'number' ? (
+                        <div className="flex items-center gap-4 justify-center text-xl font-bold text-gray-700">
+                            <input 
+                                type="number" value={numRange.min} 
+                                onChange={(e) => setNumRange({...numRange, min: parseInt(e.target.value)})}
+                                className="w-24 p-2 text-center border rounded-xl focus:ring-2 focus:ring-violet-500"
+                            />
+                            <span>부터</span>
+                            <input 
+                                type="number" value={numRange.max} 
+                                onChange={(e) => setNumRange({...numRange, max: parseInt(e.target.value)})}
+                                className="w-24 p-2 text-center border rounded-xl focus:ring-2 focus:ring-violet-500"
+                            />
+                            <span>까지</span>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center">
+                                <label className="text-sm font-bold text-gray-600">학생 명단</label>
+                                <button 
+                                    onClick={handleAddClassRoster}
+                                    className="text-xs bg-violet-100 text-violet-700 px-3 py-1 rounded-full hover:bg-violet-200 font-bold border border-violet-200 flex items-center gap-1"
+                                >
+                                    <Users size={12} /> 우리반 명단 불러오기
+                                </button>
+                            </div>
+                            <textarea 
+                                value={nameInput}
+                                onChange={handleNameInputChange}
+                                className="w-full h-32 p-3 border rounded-xl focus:ring-2 focus:ring-violet-500 resize-none text-gray-800"
+                                placeholder="예: 김철수&#10;이영희&#10;박민수"
+                            />
+                            <div className="text-right text-xs text-gray-500">
+                                총 {nameList.length}명
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Settings */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                        <label className="text-sm font-bold text-gray-600">뽑을 인원</label>
+                        <div className="flex items-center gap-3">
+                             <input 
+                                type="range" min="1" max="5" 
+                                value={drawCount} onChange={(e) => setDrawCount(parseInt(e.target.value))}
+                                className="flex-1 accent-violet-600 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <span className="text-xl font-black text-violet-600 w-8 text-center">{drawCount}</span>
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-2 flex items-center">
+                        <label className="flex items-center gap-2 cursor-pointer bg-white border px-3 py-2 rounded-lg w-full hover:bg-gray-50">
+                            <input 
+                                type="checkbox" 
+                                checked={allowDuplicates} 
+                                onChange={(e) => setAllowDuplicates(e.target.checked)}
+                                className="w-5 h-5 accent-violet-600 rounded"
+                            />
+                            <span className="text-gray-700 font-bold text-sm">중복 당첨 허용</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button 
+                    onClick={handleStartGame}
+                    className="w-full bg-violet-600 hover:bg-violet-700 text-white text-xl font-bold py-4 rounded-2xl shadow-lg transform transition-all active:scale-95 flex items-center justify-center gap-2"
+                >
+                    <Play size={24} fill="currentColor" /> 마법 시작하기
+                </button>
+            </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Play View (Shared Style, Different Controls)
+  const isStudent = !isTeacherMode;
+  const currentResult = isTeacherMode ? winners : remoteResult;
+  const currentAnimating = isTeacherMode ? isAnimating : remoteAnimating;
+  
+  // Background style
+  const bgStyle = "bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-indigo-950 to-black";
+
+  return (
+    <div className={`min-h-screen ${bgStyle} flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans`}>
+        {/* Mystical Background Elements */}
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-40 animate-pulse pointer-events-none"></div>
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+            {[...Array(20)].map((_, i) => (
+                <div key={i} className="absolute bg-white rounded-full opacity-20 animate-float" 
+                     style={{
+                         top: `${Math.random() * 100}%`,
+                         left: `${Math.random() * 100}%`,
+                         width: `${Math.random() * 4 + 1}px`,
+                         height: `${Math.random() * 4 + 1}px`,
+                         animationDuration: `${Math.random() * 10 + 5}s`
+                     }}
+                ></div>
+            ))}
+        </div>
+
+        {/* Controls Overlay (Teacher) */}
+        {isTeacherMode && (
+            <div className="absolute top-0 left-0 right-0 p-4 z-30 flex justify-between items-start bg-gradient-to-b from-black/60 to-transparent">
+                <button onClick={handleBackToSetup} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-full backdrop-blur-md transition-colors">
+                    <Settings size={18} /> 설정
+                </button>
+                <div className="text-right">
+                    <div className="text-white/80 text-sm font-bold bg-black/40 px-3 py-1 rounded-full border border-white/10">
+                        남은 인원: <span className="text-yellow-400 text-lg">{pool.length}</span>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Home Button (Student) */}
+        {isStudent && (
+            <button onClick={onBack} className="absolute top-4 left-4 z-30 text-white/50 hover:text-white transition-colors">
+                <Home size={24} />
+            </button>
+        )}
+
+        {/* Main Stage */}
+        <div className="relative z-10 flex flex-col items-center justify-center w-full max-w-6xl">
+            
+            {/* Title / Status */}
+            <div className="mb-12 text-center">
+                {currentAnimating ? (
+                    <h2 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-orange-500 animate-pulse drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]">
+                        누구일까요?
+                    </h2>
+                ) : currentResult.length > 0 ? (
+                    <h2 className="text-3xl md:text-5xl font-black text-white drop-shadow-lg flex items-center justify-center gap-3">
+                        <Sparkles className="text-yellow-400" /> 축하합니다! <Sparkles className="text-yellow-400" />
+                    </h2>
+                ) : (
+                    <h2 className="text-2xl md:text-4xl font-bold text-indigo-200 opacity-80">
+                        {isTeacherMode ? "마법의 버튼을 눌러주세요" : "선생님의 신호를 기다리는 중..."}
+                    </h2>
+                )}
+            </div>
+
+            {/* Cards Container */}
+            <div className="flex flex-wrap justify-center gap-8 perspective-1000 min-h-[400px] items-center">
+                {currentAnimating ? (
+                    // While animating, show generic spinning card or mystery orb
+                    <div className="w-48 h-48 md:w-64 md:h-64 rounded-full bg-indigo-500/30 border-4 border-indigo-400/50 flex items-center justify-center animate-spin-slow shadow-[0_0_50px_rgba(99,102,241,0.6)] backdrop-blur-sm">
+                        <span className="text-6xl">🔮</span>
+                    </div>
+                ) : currentResult.length > 0 ? (
+                    // Revealed Cards
+                    currentResult.map((res, idx) => (
+                        <MysticalCard key={idx} content={res} isRevealed={true} />
+                    ))
+                ) : (
+                    // Idle State
+                    <div className="w-32 h-32 opacity-20 bg-white/10 rounded-full blur-xl animate-pulse"></div>
+                )}
+            </div>
+
+            {/* Teacher Controls Bottom */}
+            {isTeacherMode && (
+                <div className="mt-12 flex gap-4 z-20">
+                    <button 
+                        onClick={handleResetPool}
+                        disabled={currentAnimating}
+                        className="w-16 h-16 rounded-full bg-slate-800 border border-slate-600 text-slate-400 hover:text-white hover:border-white hover:bg-slate-700 flex items-center justify-center transition-all disabled:opacity-50"
+                        title="초기화"
+                    >
+                        <RefreshCw size={24} />
+                    </button>
+                    
+                    <button 
+                        onClick={handlePick}
+                        disabled={currentAnimating || pool.length === 0}
+                        className={`
+                            px-12 py-4 rounded-full text-2xl font-black shadow-[0_0_30px_rgba(124,58,237,0.6)] transition-all transform hover:scale-105 active:scale-95 flex items-center gap-3 border-2 border-violet-400
+                            ${currentAnimating || pool.length === 0 
+                                ? 'bg-slate-700 text-slate-500 cursor-not-allowed border-slate-600' 
+                                : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-500 hover:to-indigo-500'}
+                        `}
+                    >
+                        <Wand2 size={32} className={currentAnimating ? 'animate-spin' : ''} />
+                        {currentAnimating ? '주문 외우는 중...' : '발표자 뽑기'}
+                    </button>
+                </div>
+            )}
+        </div>
+    </div>
+  );
+};

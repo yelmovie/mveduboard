@@ -1,0 +1,26 @@
+-- 설문 예시 시드 (선택 실행)
+-- 주의: 실제 사용자/학생 정보는 포함하지 않습니다.
+-- 실행 전에 classes, auth.users, profiles가 준비되어 있어야 합니다.
+
+-- 예시: 특정 설문을 이미 만든 교사 계정에서 실행하세요.
+-- 아래 class_id / created_by는 실제 값으로 교체해야 합니다.
+-- insert into public.surveys (...);
+
+-- 예시 템플릿
+-- insert into public.surveys
+-- (id, class_id, created_by, title, description, status, start_at, end_at, anonymous, one_response_per_user, results_visible_to_students)
+-- values
+-- (
+--   gen_random_uuid(),
+--   '00000000-0000-0000-0000-000000000000',
+--   '00000000-0000-0000-0000-000000000000',
+--   '이번 주 학급 만족도 설문',
+--   '간단한 설문에 참여해주세요.',
+--   'draft',
+--   null,
+--   null,
+--   true,
+--   true,
+--   false
+-- )
+-- on conflict do nothing;

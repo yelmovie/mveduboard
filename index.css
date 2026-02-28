@@ -1,0 +1,18 @@
+/* Global base styles */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #f3f4f6;
+  color: #111827;
+  font-family: 'Noto Sans KR', system-ui, -apple-system, sans-serif;
+}

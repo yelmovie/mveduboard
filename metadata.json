@@ -1,0 +1,5 @@
+{
+  "name": "Korean Elementary Board (EduBoard)",
+  "description": "A Padlet-style bulletin board for elementary education featuring post approvals, timeline layouts, and safety filters.",
+  "requestFramePermissions": []
+}
