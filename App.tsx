@@ -28,7 +28,7 @@ import { FooterPage } from './components/FooterPages'; // Import FooterPage
 import { Participant } from './types';
 import * as api from './services/boardService';
 import { HealthDebugPage } from './src/pages/debug/HealthDebugPage';
-import { getCurrentUserProfile } from './src/lib/supabase/auth';
+import { getCurrentUserProfile, teacherSignOut } from './src/lib/supabase/auth';
 import { initializeClassRenewal } from './src/lib/report/classRenewal';
 import { clearRosterCache } from './services/studentService';
 
@@ -104,9 +104,9 @@ export default function App() {
   };
 
   const handleTeacherLogout = () => {
+    teacherSignOut(); // Supabase 세션 및 sessionStorage 정리
     setIsTeacherLoggedIn(false);
     setCurrentApp(null); // Return to landing page
-    // Clear roster cache on logout
     clearRosterCache();
     alert('로그아웃 되었습니다.');
   };
