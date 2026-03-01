@@ -40,6 +40,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
   const [profileModalReason, setProfileModalReason] = useState<'code' | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileErrorNeedsReLogin, setProfileErrorNeedsReLogin] = useState(false);
   const [profileForm, setProfileForm] = useState({
     displayName: '',
     schoolName: '',
@@ -119,17 +120,29 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
     }
     setProfileLoading(true);
     setProfileError(null);
+    setProfileErrorNeedsReLogin(false);
     try {
-      await updateTeacherProfile({
+      const payload = {
         displayName: profileForm.displayName.trim(),
         schoolName: profileForm.schoolName.trim(),
         className: profileForm.className.trim(),
-      });
+      };
+      if (import.meta.env?.DEV) {
+        const session = await getSession();
+        console.log('[나의 정보 수정] session:', session);
+        console.log('[나의 정보 수정] user:', session?.user ?? null);
+        console.log('[나의 정보 수정] request payload:', payload);
+      }
+      await updateTeacherProfile(payload);
       alert('내 정보가 저장되었습니다.');
       setShowProfileModal(false);
       setProfileModalReason(null);
       await loadJoinCode();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      if (import.meta.env?.DEV && err != null) {
+        const e = err as { code?: string; message?: string; details?: unknown };
+        console.error('[나의 정보 수정] supabase error:', err, e?.code, e?.message, e?.details);
+      }
       setProfileError(getErrorMessage(err, '정보 수정에 실패했습니다.'));
     } finally {
       setProfileLoading(false);
@@ -474,15 +487,24 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
                             />
                         </div>
                         {profileError && (
-                            <div className="text-sm text-rose-600 font-bold bg-rose-50 border border-rose-200 px-3 py-2 rounded-lg">
-                                {profileError}
+                            <div className="text-sm text-rose-600 font-bold bg-rose-50 border border-rose-200 px-3 py-2 rounded-lg space-y-2">
+                                <div>{profileError}</div>
+                                {profileErrorNeedsReLogin && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowProfileModal(false); setProfileError(null); setProfileErrorNeedsReLogin(false); onLogout(); }}
+                                        className="mt-2 w-full h-12 rounded-xl bg-amber-500 text-white font-bold hover:bg-amber-600"
+                                    >
+                                        이 페이지에서 다시 로그인
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
                     <div className="px-6 pb-6 flex gap-2">
                         <button
                             type="button"
-                            onClick={() => { setShowProfileModal(false); setProfileModalReason(null); }}
+                            onClick={() => { setShowProfileModal(false); setProfileModalReason(null); setProfileError(null); setProfileErrorNeedsReLogin(false); }}
                             className="h-12 flex-1 rounded-xl border border-gray-200 text-gray-600 font-bold hover:bg-gray-100"
                             disabled={profileLoading}
                         >

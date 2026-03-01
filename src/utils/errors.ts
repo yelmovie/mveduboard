@@ -15,6 +15,12 @@ export const getErrorMessage = (error: unknown, fallback = '요청 처리 중 �
     if (msg.includes('Email not confirmed')) {
       return '이메일 인증이 필요합니다. 이메일을 확인해주세요.';
     }
+    if (msg.includes('401') || (msg.includes('JWT') && msg.includes('expired'))) {
+      return '세션이 만료되었습니다. 이 페이지에서 다시 로그인해주세요.';
+    }
+    if (msg.includes('403') || msg.includes('Forbidden')) {
+      return '권한이 없습니다. 로그인을 확인해주세요.';
+    }
     return msg || fallback;
   }
   if (error && typeof error === 'object') {
@@ -33,6 +39,12 @@ export const getErrorMessage = (error: unknown, fallback = '요청 처리 중 �
       }
       if (msg.includes('Email not confirmed')) {
         return '이메일 인증이 필요합니다. 이메일을 확인해주세요.';
+      }
+      if (msg.includes('401') || msg.includes('JWT') && msg.includes('expired')) {
+        return '세션이 만료되었습니다. 이 페이지에서 다시 로그인해주세요.';
+      }
+      if (msg.includes('403') || msg.includes('Forbidden')) {
+        return '권한이 없습니다. 로그인을 확인해주세요.';
       }
       if (msg.includes('42501') || msg.includes('permission denied') || msg.includes('policy')) {
         return '데이터베이스 권한 오류입니다. RLS 정책을 확인해주세요.';

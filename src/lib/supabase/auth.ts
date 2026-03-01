@@ -502,6 +502,8 @@ export const getTeacherProfileDetails = async () => {
   };
 };
 
+const DEBUG_AUTH = typeof import.meta !== 'undefined' && import.meta.env?.DEV;
+
 export const updateTeacherProfile = async ({
   displayName,
   schoolName,
@@ -513,19 +515,50 @@ export const updateTeacherProfile = async ({
 }) => {
   if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
 
-  // 1) userId 확보: 세션 → getUser → localStorage 직접 읽기 (다른 포트/도메인에서도 동작하도록)
-  const session = await getSession();
+  // 1) userId 확보: 세션 → getUser → localStorage → (실패 시) 짧은 대기 후 getSession 재시도 (세션 재수화 레이스 대응)
+  let session = await getSession();
   let userId: string | null | undefined = session?.user?.id;
   if (!userId) {
     const { data: userData } = await supabase.auth.getUser();
     userId = userData.user?.id ?? undefined;
+    if (DEBUG_AUTH) {
+      console.log('[updateTeacherProfile] getSession user:', session?.user?.id ?? null, 'getUser user:', userData?.user?.id ?? null);
+    }
   }
   if (!userId) {
     userId = getUserIdFromStorage();
   }
   if (!userId) {
-    throw new Error('로그인 정보를 확인할 수 없습니다. 이 페이지에서 다시 로그인해주세요.');
+    await new Promise((r) => setTimeout(r, 150));
+    session = await getSession();
+    userId = session?.user?.id ?? undefined;
+    if (!userId) {
+      const { data: userData } = await supabase.auth.getUser();
+      userId = userData?.user?.id ?? undefined;
+    }
+    if (!userId) userId = getUserIdFromStorage();
   }
+  if (!userId) {
+    const storageKeys: string[] = [];
+    if (typeof localStorage !== 'undefined') {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith('sb-') && k?.endsWith('-auth-token')) storageKeys.push(k);
+      }
+    }
+    if (DEBUG_AUTH) {
+      console.error('[updateTeacherProfile] userId null — session:', !!session, 'session?.user?.id:', session?.user?.id ?? null, 'storage keys:', storageKeys);
+    }
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const noStorageOnOrigin = storageKeys.length === 0 && origin;
+    const message = noStorageOnOrigin
+      ? `현재 주소(${origin})에는 저장된 로그인 정보가 없습니다. 다른 주소(예: localhost)에서 로그인하셨을 수 있습니다. 아래 "이 페이지에서 다시 로그인"을 눌러 지금 주소로 로그인해주세요.`
+      : '로그인 정보를 확인할 수 없습니다. 이 페이지에서 다시 로그인해주세요.';
+    const err = new Error(message) as Error & { code?: string };
+    err.code = noStorageOnOrigin ? 'SESSION_NOT_ON_ORIGIN' : 'SESSION_UNKNOWN';
+    throw err;
+  }
+  if (DEBUG_AUTH) console.log('[updateTeacherProfile] userId:', userId);
 
   // 2) userId로 프로필 직접 조회 (getCurrentUserProfile이 null이어도 저장 가능하도록)
   const { data: profile, error: profileFetchError } = await supabase
@@ -534,7 +567,7 @@ export const updateTeacherProfile = async ({
     .eq('id', userId)
     .maybeSingle();
   if (profileFetchError) {
-    console.error('[updateTeacherProfile] profile fetch error:', profileFetchError);
+    if (DEBUG_AUTH) console.error('[updateTeacherProfile] supabase error:', profileFetchError, profileFetchError?.code, profileFetchError?.message, profileFetchError?.details);
     throw new Error('프로필을 불러오지 못했습니다. 다시 시도해주세요.');
   }
 
@@ -549,19 +582,28 @@ export const updateTeacherProfile = async ({
     .from('profiles')
     .update({ display_name: displayName })
     .eq('id', profile.id);
-  if (profileError) throw profileError;
+  if (profileError) {
+    if (DEBUG_AUTH) console.error('[updateTeacherProfile] supabase error:', profileError, profileError?.code, profileError?.message, profileError?.details);
+    throw new Error(getErrorMessage(profileError, '프로필 수정에 실패했습니다.'));
+  }
 
   const { error: schoolError } = await supabase
     .from('schools')
     .update({ name: schoolName })
     .eq('id', profile.school_id);
-  if (schoolError) throw schoolError;
+  if (schoolError) {
+    if (DEBUG_AUTH) console.error('[updateTeacherProfile] supabase error:', schoolError, schoolError?.code, schoolError?.message, schoolError?.details);
+    throw new Error(getErrorMessage(schoolError, '학교 정보 수정에 실패했습니다.'));
+  }
 
   const { error: classError } = await supabase
     .from('classes')
     .update({ name: className })
     .eq('id', profile.class_id);
-  if (classError) throw classError;
+  if (classError) {
+    if (DEBUG_AUTH) console.error('[updateTeacherProfile] supabase error:', classError, classError?.code, classError?.message, classError?.details);
+    throw new Error(getErrorMessage(classError, '학급 정보 수정에 실패했습니다.'));
+  }
 };
 
 export const getClassById = async (classId: string) => {
