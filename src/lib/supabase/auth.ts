@@ -61,11 +61,18 @@ export const teacherSignIn = async (email: string, password: string) => {
 
   if (typeof window !== 'undefined') {
     const sbKeys = Object.keys(localStorage).filter((k) => k.startsWith('sb-') || k.includes('supabase'));
+    const raw = AUTH_STORAGE_KEY ? localStorage.getItem(AUTH_STORAGE_KEY) : null;
+    const memSession = await getSession();
     console.log('[teacherSignIn] signIn 직후', {
       hasSession: !!data?.session,
-      userId: data?.user?.id ?? null,
+      access_token: data?.session ? (data.session.access_token ? `${data.session.access_token.length} chars` : null) : null,
+      refresh_token: !!data?.session?.refresh_token,
       error: error ? { message: error.message, code: error.code } : null,
       localStorageKeys: sbKeys,
+      storageKeyUsed: AUTH_STORAGE_KEY || '(default)',
+      localStorageHasKey: AUTH_STORAGE_KEY ? !!raw : null,
+      localStorageValueLength: raw ? raw.length : 0,
+      getSessionRightAfter: memSession ? { userId: memSession.user?.id } : null,
     });
   }
 

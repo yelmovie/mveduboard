@@ -68,14 +68,23 @@ export default function App() {
 
   useEffect(() => {
     const initProfile = async () => {
-      if (supabase && typeof window !== "undefined") {
-        const session = await getSession();
+      if (!supabase) return;
+      const session = await getSession();
+      if (typeof window !== "undefined") {
         console.log("[앱 초기화] getSession() 결과:", session ? { userId: session.user?.id } : null);
+      }
+      if (!session) {
+        setIsTeacherLoggedIn(false);
+        setTeacherName("");
+        return;
       }
       const profile = await getCurrentUserProfile();
       if (profile?.role === "teacher") {
         setIsTeacherLoggedIn(true);
         setTeacherName(profile.display_name || "");
+      } else {
+        setIsTeacherLoggedIn(false);
+        setTeacherName("");
       }
     };
     initProfile();
@@ -88,16 +97,19 @@ export default function App() {
       if (typeof window !== "undefined") {
         console.log("[onAuthStateChange]", event, "session:", session ? { userId: session.user?.id } : null);
       }
-      if (event === "SIGNED_OUT" || !session) {
+      if (event === "SIGNED_OUT" || event === "INITIAL_SESSION" && !session || !session) {
         setIsTeacherLoggedIn(false);
         setTeacherName("");
         return;
       }
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+      if (session && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
         const profile = await getCurrentUserProfile();
         if (profile?.role === "teacher") {
           setIsTeacherLoggedIn(true);
           setTeacherName(profile.display_name || "");
+        } else {
+          setIsTeacherLoggedIn(false);
+          setTeacherName("");
         }
       }
     });

@@ -26,5 +26,6 @@ export const supabase = isSupabaseConfigured
   : null;
 
 if (supabase && typeof window !== 'undefined') {
-  console.log('[supabase client] projectRef:', projectRef, 'storageKey:', AUTH_STORAGE_KEY || '(default)');
+  const urlForLog = SUPABASE_URL ? SUPABASE_URL.replace(/\/$/, '') : '';
+  console.log('[supabase client] supabaseUrl:', urlForLog, 'projectRef:', projectRef, 'storageKey:', AUTH_STORAGE_KEY || '(default)');
 }
