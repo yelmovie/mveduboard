@@ -1,17 +1,25 @@
-import { supabase } from './client';
+import { supabase, AUTH_STORAGE_KEY } from './client';
 import { SUPABASE_URL } from '../../config/supabase';
 import { MAX_STUDENTS_PER_CLASS } from '../../constants/limits';
 import { getErrorMessage } from '../../utils/errors';
 import { generateUUID } from '../../utils/uuid';
 
-/** getSession/getUser가 실패할 때(다른 포트·도메인) localStorage에서 Supabase 세션 직접 읽기 */
+/** getSession/getUser가 실패할 때(다른 포트·도메인) localStorage에서 Supabase 세션 직접 읽기. client와 동일한 storageKey 사용 */
 const getUserIdFromStorage = (): string | null => {
   if (typeof localStorage === 'undefined') return null;
   try {
+    if (AUTH_STORAGE_KEY) {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw);
+        const user = data?.user ?? data?.currentSession?.user ?? data?.session?.user;
+        if (user?.id) return user.id;
+      }
+    }
     const projectRef = SUPABASE_URL ? SUPABASE_URL.replace(/^https?:\/\//, '').split('.')[0] : '';
-    const key = projectRef ? `sb-${projectRef}-auth-token` : null;
-    if (key) {
-      const raw = localStorage.getItem(key);
+    const fallbackKey = projectRef ? `sb-${projectRef}-auth-token` : null;
+    if (fallbackKey) {
+      const raw = localStorage.getItem(fallbackKey);
       if (raw) {
         const data = JSON.parse(raw);
         const user = data?.user ?? data?.currentSession?.user ?? data?.session?.user;
@@ -50,8 +58,19 @@ const generateJoinCode = (length = 6) => {
 export const teacherSignIn = async (email: string, password: string) => {
   if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (typeof window !== 'undefined') {
+    const sbKeys = Object.keys(localStorage).filter((k) => k.startsWith('sb-') || k.includes('supabase'));
+    console.log('[teacherSignIn] signIn 직후', {
+      hasSession: !!data?.session,
+      userId: data?.user?.id ?? null,
+      error: error ? { message: error.message, code: error.code } : null,
+      localStorageKeys: sbKeys,
+    });
+  }
+
   if (error) throw new Error(getErrorMessage(error));
-  
+
   // After successful login, check if there's pending signup info
   // This handles Mode B: email confirmation required -> login -> create school/class
   const pendingInfoStr = localStorage.getItem('teacher_signup_pending');
@@ -536,6 +555,12 @@ export const updateTeacherProfile = async ({
       const { data: userData } = await supabase.auth.getUser();
       userId = userData?.user?.id ?? undefined;
     }
+    if (!userId) userId = getUserIdFromStorage();
+  }
+  if (!userId) {
+    await new Promise((r) => setTimeout(r, 400));
+    session = await getSession();
+    userId = session?.user?.id ?? undefined;
     if (!userId) userId = getUserIdFromStorage();
   }
   if (!userId) {

@@ -9,7 +9,9 @@ import {
 warnMissingSupabaseEnv();
 
 const projectRef = SUPABASE_URL ? SUPABASE_URL.replace(/^https?:\/\//, '').split('.')[0] : '';
-const authStorageKey = projectRef ? `sb-${projectRef}-auth-token` : undefined;
+export const AUTH_STORAGE_KEY = projectRef ? `sb-${projectRef}-auth-token` : '';
+
+const storage = typeof window !== 'undefined' ? window.localStorage : undefined;
 
 export const supabase = isSupabaseConfigured
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -17,7 +19,12 @@ export const supabase = isSupabaseConfigured
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        ...(authStorageKey && { storageKey: authStorageKey }),
+        storage: storage ?? undefined,
+        storageKey: AUTH_STORAGE_KEY || undefined,
       },
     })
   : null;
+
+if (supabase && typeof window !== 'undefined') {
+  console.log('[supabase client] projectRef:', projectRef, 'storageKey:', AUTH_STORAGE_KEY || '(default)');
+}

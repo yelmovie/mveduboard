@@ -27,7 +27,7 @@ import { FooterPage } from "./components/FooterPages"; // Import FooterPage
 import { Participant } from "./types";
 import * as api from "./services/boardService";
 import { HealthDebugPage } from "./src/pages/debug/HealthDebugPage";
-import { getCurrentUserProfile } from "./src/lib/supabase/auth";
+import { getCurrentUserProfile, getSession } from "./src/lib/supabase/auth";
 import { supabase } from "./src/lib/supabase/client";
 import { initializeClassRenewal } from "./src/lib/report/classRenewal";
 import { clearRosterCache } from "./services/studentService";
@@ -68,6 +68,10 @@ export default function App() {
 
   useEffect(() => {
     const initProfile = async () => {
+      if (supabase && typeof window !== "undefined") {
+        const session = await getSession();
+        console.log("[앱 초기화] getSession() 결과:", session ? { userId: session.user?.id } : null);
+      }
       const profile = await getCurrentUserProfile();
       if (profile?.role === "teacher") {
         setIsTeacherLoggedIn(true);
@@ -81,6 +85,9 @@ export default function App() {
   useEffect(() => {
     if (!supabase) return;
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (typeof window !== "undefined") {
+        console.log("[onAuthStateChange]", event, "session:", session ? { userId: session.user?.id } : null);
+      }
       if (event === "SIGNED_OUT" || !session) {
         setIsTeacherLoggedIn(false);
         setTeacherName("");
