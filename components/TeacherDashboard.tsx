@@ -143,7 +143,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
         const e = err as { code?: string; message?: string; details?: unknown };
         console.error('[나의 정보 수정] supabase error:', err, e?.code, e?.message, e?.details);
       }
-      setProfileError(getErrorMessage(err, '정보 수정에 실패했습니다.'));
+      const msg = getErrorMessage(err, '정보 수정에 실패했습니다.');
+      setProfileError(msg);
+      const e = err as { code?: string; message?: string };
+      const isReLoginError =
+        e?.code === 'SESSION_NOT_ON_ORIGIN' ||
+        (typeof e?.message === 'string' && (e.message.includes('저장된 로그인 정보가 없습니다') || e.message.includes('로그인 정보를 확인할 수 없습니다'))) ||
+        msg.includes('이 페이지에서 다시 로그인') ||
+        msg.includes('저장된 로그인 정보가 없습니다');
+      setProfileErrorNeedsReLogin(isReLoginError);
     } finally {
       setProfileLoading(false);
     }
