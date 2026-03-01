@@ -28,6 +28,7 @@ import { Participant } from "./types";
 import * as api from "./services/boardService";
 import { HealthDebugPage } from "./src/pages/debug/HealthDebugPage";
 import { getCurrentUserProfile } from "./src/lib/supabase/auth";
+import { supabase } from "./src/lib/supabase/client";
 import { initializeClassRenewal } from "./src/lib/report/classRenewal";
 import { clearRosterCache } from "./services/studentService";
 
@@ -74,6 +75,26 @@ export default function App() {
       }
     };
     initProfile();
+  }, []);
+
+  // Supabase auth 상태와 UI 동기화 (세션 복구/만료 시 대시보드 표시 정확히 유지)
+  useEffect(() => {
+    if (!supabase) return;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        setIsTeacherLoggedIn(false);
+        setTeacherName("");
+        return;
+      }
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        const profile = await getCurrentUserProfile();
+        if (profile?.role === "teacher") {
+          setIsTeacherLoggedIn(true);
+          setTeacherName(profile.display_name || "");
+        }
+      }
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {

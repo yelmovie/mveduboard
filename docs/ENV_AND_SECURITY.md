@@ -52,9 +52,34 @@
 
 ---
 
-## 4. 요약
+## 4. Vercel 배포 시 환경 변수 (필수)
+
+배포 도메인(예: `https://mveduboard.vercel.app`)에서 로그인·세션 저장이 동작하려면:
+
+| 변수명 | 필수 | 설명 |
+|--------|------|------|
+| `VITE_SUPABASE_URL` | ✅ | 로컬과 **동일한** Supabase 프로젝트 URL |
+| `VITE_SUPABASE_ANON_KEY` | ✅ | 로컬과 **동일한** Supabase anon 키 |
+| `VITE_OPENAI_API_KEY` | ⭕ | AI 기능 사용 시 |
+
+- Vercel 대시보드 → 프로젝트 → **Settings → Environment Variables**에서 위 값을 설정하세요.
+- **주의**: 로컬 `.env.local`과 Vercel 환경 변수가 **서로 다른 Supabase 프로젝트**를 가리키면, 한쪽에서 로그인해도 다른 쪽에서는 세션이 없어 보입니다. 반드시 **같은 프로젝트**로 맞추세요.
+
+### Supabase 대시보드 URL 설정 (권장)
+
+1. Supabase 대시보드 → **Authentication** → **URL Configuration**
+2. **Site URL**: 배포 주소로 설정 (예: `https://mveduboard.vercel.app`)
+3. **Redirect URLs**: 다음을 추가  
+   `https://mveduboard.vercel.app`  
+   `https://mveduboard.vercel.app/**`  
+   (이메일 인증 링크·OAuth 콜백이 이 도메인으로 돌아오도록)
+
+---
+
+## 5. 요약
 
 - **필수**: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 - **AI 기능 사용 시**: `VITE_OPENAI_API_KEY`
 - **보안**: `.env.local` 미커밋, Supabase RLS 적용, 프로덕션에서는 OpenAI 호출을 백엔드로 이전 권장.
 - **기능·권한·보안 점검**: `docs/FEATURE_AUDIT.md` 참고.
+- **Vercel 배포**: 위 4절의 환경 변수와 Supabase URL 설정을 적용한 뒤 배포하면, 해당 도메인에서 로그인·정보 저장이 정상 동작합니다.
