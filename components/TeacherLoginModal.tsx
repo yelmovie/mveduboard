@@ -12,7 +12,7 @@ interface TeacherLoginModalProps {
   onForgotPassword?: () => void;
 }
 
-export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, onLoginSuccess, isSignup = false }) => {
+export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, onLoginSuccess, isSignup = false, onForgotPassword }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [schoolName, setSchoolName] = useState('');
