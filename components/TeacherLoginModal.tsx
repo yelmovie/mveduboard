@@ -37,11 +37,12 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('LOGIN_CLICK', { isSignup, email: email ? `${email.slice(0, 2)}***` : '' });
     setError('');
     setSuccessMessage('');
     setRequiresEmailConfirmation(false);
     setShowResendButton(false);
-    
+
     try {
       if (isSignup) {
         if (!teacherName.trim() || !schoolName.trim() || !className.trim()) {
@@ -73,6 +74,7 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
           onClose();
         }
       } else {
+        console.log('LOGIN_CLICK → teacherSignIn(비밀번호 로그인) 호출 직전');
         await teacherSignIn(email, password);
         const session = await getSession();
         if (!session) {
@@ -295,7 +297,11 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
                 </button>
               </div>
             ) : (
-              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95 text-lg">
+              <button
+                type="submit"
+                onClick={() => console.log('LOGIN_CLICK (버튼 onClick)')}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95 text-lg"
+              >
                   {isSignup ? '가입 완료' : '로그인'}
               </button>
             )}

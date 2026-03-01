@@ -65,7 +65,13 @@ const generateJoinCode = (length = 6) => {
 };
 
 export const teacherSignIn = async (email: string, password: string) => {
-  if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
+  if (typeof window !== 'undefined') {
+    console.log('[teacherSignIn] signInWithPassword 호출 직전', { hasSupabase: !!supabase, emailPrefix: email ? `${email.slice(0, 2)}***` : '' });
+  }
+  if (!supabase) {
+    if (typeof window !== 'undefined') console.error('[teacherSignIn] supabase가 null이라 /auth/v1/token 요청이 발생하지 않습니다. VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY를 확인하세요.');
+    throw new Error('Supabase 환경변수가 필요합니다.');
+  }
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (typeof window !== 'undefined') {
