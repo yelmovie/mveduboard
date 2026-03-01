@@ -72,7 +72,10 @@
 3. **Redirect URLs**: 다음을 추가  
    `https://mveduboard.vercel.app`  
    `https://mveduboard.vercel.app/**`  
-   (이메일 인증 링크·OAuth 콜백이 이 도메인으로 돌아오도록)
+   `https://mveduboard.vercel.app/reset-password`  
+   (이메일 인증·OAuth·비밀번호 재설정 링크가 이 도메인으로 돌아오도록)
+
+4. **Google 로그인 사용 시**: **Authentication** → **Providers** → **Google** 를 켜고, Google Cloud Console에서 발급한 Client ID / Client Secret을 설정하세요. 로그인 직후 앱에서 `profiles` 행이 없으면 `role=teacher` 로 한 번 생성해 학급 저장이 가능하도록 합니다.
 
 ---
 

@@ -85,7 +85,14 @@ export const teacherSignIn = async (email: string, password: string) => {
     });
   }
 
-  if (error) throw new Error(getErrorMessage(error));
+  if (error) {
+    const status = (error as { status?: number }).status;
+    const msg = (error as { message?: string }).message ?? '';
+    const code = (error as { error?: string }).error;
+    const desc = (error as { error_description?: string }).error_description ?? '';
+    const display = [status != null && `[${status}]`, desc || msg, code && `(error: ${code})`].filter(Boolean).join(' ');
+    throw new Error(display || msg || '로그인에 실패했습니다.');
+  }
 
   // After successful login, check if there's pending signup info
   // This handles Mode B: email confirmation required -> login -> create school/class
@@ -444,6 +451,23 @@ export const resendSignupConfirmation = async (email: string) => {
   return true;
 };
 
+/** 비밀번호 재설정 메일 발송. 이메일 존재 여부 노출 금지 — 성공/실패 모두 동일 안내. */
+export const requestPasswordReset = async (email: string): Promise<{ ok: boolean; message: string }> => {
+  if (!supabase) return { ok: false, message: 'Supabase 환경변수가 필요합니다.' };
+  const redirectTo = `${typeof window !== 'undefined' ? window.location.origin : ''}/reset-password`;
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+  const message = '등록된 이메일이 있다면 재설정 메일을 보냈습니다. 메일함을 확인해주세요.';
+  if (error && isAuthDebug()) console.log('[requestPasswordReset]', error.message);
+  return { ok: true, message };
+};
+
+/** 재설정 링크 진입 후 새 비밀번호로 변경 (recovery 세션 필요) */
+export const updatePassword = async (newPassword: string): Promise<void> => {
+  if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw new Error(error.message);
+};
+
 export const studentJoinWithCode = async (joinCode: string, displayName: string) => {
   if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
   const normalized = joinCode.trim().toUpperCase();
@@ -491,6 +515,23 @@ export const getSession = async () => {
   if (!supabase) return null;
   const { data } = await supabase.auth.getSession();
   return data.session;
+};
+
+/**
+ * 로그인 직후(Google/OAuth 포함) 교사로 사용할 유저의 profiles 행이 없으면 생성.
+ * getCurrentUserProfile()이 role=teacher로 반환되도록 하여 대시보드·학급 저장이 가능하게 함.
+ */
+export const ensureTeacherProfile = async (user: { id: string; email?: string | null; user_metadata?: { full_name?: string } }): Promise<void> => {
+  if (!supabase) return;
+  const { data: existing } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle();
+  if (existing) return;
+  const displayName = user.email ?? user.user_metadata?.full_name ?? '선생님';
+  const { error } = await supabase.from('profiles').insert({
+    id: user.id,
+    role: 'teacher',
+    display_name: displayName,
+  });
+  if (error && isAuthDebug()) console.log('[ensureTeacherProfile] insert:', error.code, error.message);
 };
 
 export const getCurrentUserProfile = async () => {

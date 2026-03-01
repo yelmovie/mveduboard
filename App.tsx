@@ -23,31 +23,29 @@ import { ContactApp } from "./components/ContactApp";
 import { TeacherDashboard } from "./components/TeacherDashboard";
 import { StudentLoginModal } from "./components/StudentLoginModal";
 import { TeacherLoginModal } from "./components/TeacherLoginModal";
+import { ResetPasswordRequestModal } from "./components/ResetPasswordRequestModal";
 import { FooterPage } from "./components/FooterPages"; // Import FooterPage
 import { Participant } from "./types";
 import * as api from "./services/boardService";
 import { HealthDebugPage } from "./src/pages/debug/HealthDebugPage";
-import { getCurrentUserProfile, getSession } from "./src/lib/supabase/auth";
+import { ResetPasswordPage } from "./src/pages/ResetPasswordPage";
+import { getCurrentUserProfile, getSession, ensureTeacherProfile } from "./src/lib/supabase/auth";
 import { supabase } from "./src/lib/supabase/client";
+import { isAuthDebug } from "./src/config/supabase";
 import { initializeClassRenewal } from "./src/lib/report/classRenewal";
 import { clearRosterCache } from "./services/studentService";
 
 export default function App() {
   const pathname =
     typeof window !== "undefined" ? window.location.pathname : "";
-  if (
-    pathname.startsWith("/debug/health") ||
-    pathname.startsWith("/debug/supabase")
-  ) {
-    return <HealthDebugPage />;
-  }
   const [currentApp, setCurrentApp] = useState<string | null>(null);
   const [isTeacherLoggedIn, setIsTeacherLoggedIn] = useState(false);
   const [teacherName, setTeacherName] = useState("");
 
   // Login Modals State
   const [isTeacherLoginOpen, setIsTeacherLoginOpen] = useState(false);
-  const [isTeacherSignupMode, setIsTeacherSignupMode] = useState(false); // Track if it's signup or login
+  const [isTeacherSignupMode, setIsTeacherSignupMode] = useState(false);
+  const [isResetPasswordRequestOpen, setIsResetPasswordRequestOpen] = useState(false);
   const [isStudentLoginOpen, setIsStudentLoginOpen] = useState(false);
 
   // Student Data
@@ -70,8 +68,8 @@ export default function App() {
     const initProfile = async () => {
       if (!supabase) return;
       const session = await getSession();
-      if (typeof window !== "undefined") {
-        console.log("[앱 초기화] getSession() 결과:", session ? { userId: session.user?.id } : null);
+      if (typeof window !== "undefined" && isAuthDebug()) {
+        console.log("[앱 초기화] getSession() 결과:", session ? "있음" : "null");
       }
       if (!session) {
         setIsTeacherLoggedIn(false);
@@ -100,8 +98,8 @@ export default function App() {
   useEffect(() => {
     if (!supabase) return;
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (typeof window !== "undefined") {
-        console.log("[onAuthStateChange]", event, "session:", session ? { userId: session.user?.id } : null);
+      if (typeof window !== "undefined" && isAuthDebug()) {
+        console.log("[onAuthStateChange]", event, "session:", session ? "있음" : "null");
       }
       if (event === "SIGNED_OUT" || event === "INITIAL_SESSION" && !session || !session) {
         setIsTeacherLoggedIn(false);
@@ -109,6 +107,11 @@ export default function App() {
         return;
       }
       if (session && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
+        if (typeof window !== "undefined" && isAuthDebug()) {
+          const s = await getSession();
+          console.log("[로그인 직후] getSession():", s ? "있음" : "null");
+        }
+        await ensureTeacherProfile(session.user);
         const profile = await getCurrentUserProfile();
         if (profile?.role === "teacher") {
           setIsTeacherLoggedIn(true);
@@ -179,9 +182,16 @@ export default function App() {
   };
 
   const handleSelectApp = (appId: string) => {
-    // Direct mapping or fallback
     setCurrentApp(appId);
   };
+
+  // Pathname-only routes (훅 이후 분기)
+  if (pathname.startsWith("/debug/health") || pathname.startsWith("/debug/supabase")) {
+    return <HealthDebugPage />;
+  }
+  if (pathname === "/reset-password" || pathname.startsWith("/reset-password/")) {
+    return <ResetPasswordPage />;
+  }
 
   // --- App Switching ---
 
@@ -466,7 +476,12 @@ export default function App() {
           isSignup={isTeacherSignupMode}
           onClose={() => setIsTeacherLoginOpen(false)}
           onLoginSuccess={handleTeacherLoginSuccess}
+          onForgotPassword={() => { setIsTeacherLoginOpen(false); setIsResetPasswordRequestOpen(true); }}
         />
+      )}
+
+      {isResetPasswordRequestOpen && (
+        <ResetPasswordRequestModal onClose={() => setIsResetPasswordRequestOpen(false)} />
       )}
 
       {isStudentLoginOpen && (

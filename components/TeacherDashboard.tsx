@@ -142,6 +142,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
       if (import.meta.env?.DEV && err != null) {
         const e = err as { code?: string; message?: string; details?: unknown };
         console.error('[나의 정보 수정] supabase error:', err, e?.code, e?.message, e?.details);
+        console.log('[나의 정보 수정] 실패 시 Network(Fetch/XHR)에서 /rest/v1/classes 또는 /rest/v1/profiles 요청의 status·response body 확인');
       }
       const msg = getErrorMessage(err, '정보 수정에 실패했습니다.');
       setProfileError(msg);

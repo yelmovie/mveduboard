@@ -3,11 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { X, Lock, LogIn, UserPlus } from 'lucide-react';
 import { logBetaEvent } from '../src/lib/supabase/events';
 import { teacherSignIn, teacherSignUp, resendSignupConfirmation, getSession } from '../src/lib/supabase/auth';
+import { supabase } from '../src/lib/supabase/client';
 
 interface TeacherLoginModalProps {
   onClose: () => void;
   onLoginSuccess: () => void;
   isSignup?: boolean;
+  onForgotPassword?: () => void;
 }
 
 export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, onLoginSuccess, isSignup = false }) => {
@@ -37,7 +39,6 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('LOGIN_CLICK', { isSignup, email: email ? `${email.slice(0, 2)}***` : '' });
     setError('');
     setSuccessMessage('');
     setRequiresEmailConfirmation(false);
@@ -74,7 +75,6 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
           onClose();
         }
       } else {
-        console.log('LOGIN_CLICK → teacherSignIn(비밀번호 로그인) 호출 직전');
         await teacherSignIn(email, password);
         const session = await getSession();
         if (!session) {
@@ -128,15 +128,26 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
     onClose();
   };
 
-  const handleGoogleLogin = () => {
-      setIsGoogleLoading(true);
-      // Simulate network request for Google OAuth
-      setTimeout(() => {
-          setIsGoogleLoading(false);
-          logBetaEvent('login_success');
-          onLoginSuccess();
-          onClose();
-      }, 1500);
+  const handleGoogleLogin = async () => {
+    if (!supabase) {
+      setError('Supabase 환경변수가 필요합니다.');
+      return;
+    }
+    setIsGoogleLoading(true);
+    setError('');
+    try {
+      const redirectTo = typeof window !== 'undefined' ? window.location.origin : '';
+      const { error: oauthError } = await supabase.auth.signInWithOAuth(
+        { provider: 'google' },
+        { redirectTo }
+      );
+      if (oauthError) {
+        setError(oauthError.message || 'Google 로그인에 실패했습니다.');
+      }
+      // 성공 시 리디렉션되므로 onClose/onLoginSuccess는 콜백 URL 복귀 후 onAuthStateChange에서 처리됨
+    } finally {
+      setIsGoogleLoading(false);
+    }
   };
 
   return (
@@ -222,6 +233,17 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
                 required
                 />
             </div>
+            {!isSignup && onForgotPassword && (
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={onForgotPassword}
+                  className="text-sm text-indigo-600 hover:text-indigo-800 hover:underline"
+                >
+                  비밀번호를 잊으셨나요?
+                </button>
+              </div>
+            )}
 
             {isSignup && (
               <>
@@ -299,7 +321,6 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
             ) : (
               <button
                 type="submit"
-                onClick={() => console.log('LOGIN_CLICK (버튼 onClick)')}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95 text-lg"
               >
                   {isSignup ? '가입 완료' : '로그인'}
