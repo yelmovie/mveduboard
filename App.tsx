@@ -64,12 +64,33 @@ export default function App() {
     }
   }, []);
 
+  // Bootstrap: TEMP debug log (no tokens); redact URL after '#'
+  useEffect(() => {
+    if (!supabase || typeof window === "undefined") return;
+    const href = window.location.href;
+    const redacted = href.includes("#") ? href.split("#")[0] + "#..." : href;
+    const hashHasAccessToken = window.location.hash.includes("access_token");
+    getSession().then((s) => {
+      if (isAuthDebug()) {
+        console.log("[auth bootstrap] url (redacted):", redacted, "hashHasAccessToken:", hashHasAccessToken, "getSession:", s ? "ok" : "null");
+      }
+    });
+  }, []);
+
   useEffect(() => {
     const initProfile = async () => {
       if (!supabase) return;
-      const session = await getSession();
+      let session = await getSession();
       if (typeof window !== "undefined" && isAuthDebug()) {
         console.log("[앱 초기화] getSession() 결과:", session ? "있음" : "null");
+      }
+      // OAuth callback: URL hash may not be processed yet; wait and retry once before treating as no session
+      if (!session && typeof window !== "undefined" && window.location.hash.includes("access_token")) {
+        await new Promise((r) => setTimeout(r, 800));
+        session = await getSession();
+        if (typeof window !== "undefined" && isAuthDebug()) {
+          console.log("[앱 초기화] after wait for URL session getSession():", session ? "있음" : "null");
+        }
       }
       if (!session) {
         setIsTeacherLoggedIn(false);
@@ -101,7 +122,29 @@ export default function App() {
       if (typeof window !== "undefined" && isAuthDebug()) {
         console.log("[onAuthStateChange]", event, "session:", session ? "있음" : "null");
       }
-      if (event === "SIGNED_OUT" || event === "INITIAL_SESSION" && !session || !session) {
+      // INITIAL_SESSION with null can happen before URL hash is processed (OAuth callback); defer and re-check
+      if (event === "INITIAL_SESSION" && !session && typeof window !== "undefined" && window.location.hash.includes("access_token")) {
+        setTimeout(async () => {
+          const retry = await getSession();
+          if (retry) {
+            if (isAuthDebug()) console.log("[onAuthStateChange] after URL recovery getSession(): ok");
+            await ensureTeacherProfile(retry.user);
+            const profile = await getCurrentUserProfile();
+            if (profile?.role === "teacher") {
+              setIsTeacherLoggedIn(true);
+              setTeacherName(profile.display_name || "");
+            } else {
+              setIsTeacherLoggedIn(false);
+              setTeacherName("");
+            }
+          } else {
+            setIsTeacherLoggedIn(false);
+            setTeacherName("");
+          }
+        }, 800);
+        return;
+      }
+      if (event === "SIGNED_OUT" || (event === "INITIAL_SESSION" && !session) || !session) {
         setIsTeacherLoggedIn(false);
         setTeacherName("");
         return;
