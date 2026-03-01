@@ -1,3 +1,4 @@
+/** DEPRECATED: 루트 lib/* 에서만 참조(앱은 src/constants/limits 사용). */
 export const MAX_CLASSES_DEFAULT = 10;
 export const MAX_STUDENTS_PER_CLASS = 30;
 export const DAILY_IMAGE_LIMIT = 10;

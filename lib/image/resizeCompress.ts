@@ -1,3 +1,4 @@
+/** DEPRECATED: 사용처 없음. 앱은 src/lib/image/resizeCompress.ts 사용. */
 import { IMAGE_MAX_WIDTH, IMAGE_OUTPUT_FORMAT, IMAGE_JPEG_QUALITY } from '../../constants/limits';
 
 const readFileAsDataUrl = (blob: Blob) =>

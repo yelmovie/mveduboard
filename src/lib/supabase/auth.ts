@@ -1,5 +1,5 @@
 import { supabase, AUTH_STORAGE_KEY } from './client';
-import { SUPABASE_URL } from '../../config/supabase';
+import { SUPABASE_URL, isAuthDebug } from '../../config/supabase';
 import { MAX_STUDENTS_PER_CLASS } from '../../constants/limits';
 import { getErrorMessage } from '../../utils/errors';
 import { generateUUID } from '../../utils/uuid';
@@ -65,27 +65,23 @@ const generateJoinCode = (length = 6) => {
 };
 
 export const teacherSignIn = async (email: string, password: string) => {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && isAuthDebug()) {
     console.log('[teacherSignIn] signInWithPassword 호출 직전', { hasSupabase: !!supabase, emailPrefix: email ? `${email.slice(0, 2)}***` : '' });
   }
   if (!supabase) {
-    if (typeof window !== 'undefined') console.error('[teacherSignIn] supabase가 null이라 /auth/v1/token 요청이 발생하지 않습니다. VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY를 확인하세요.');
+    if (typeof window !== 'undefined') console.error('[teacherSignIn] supabase가 null — VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY 확인.');
     throw new Error('Supabase 환경변수가 필요합니다.');
   }
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-  if (typeof window !== 'undefined') {
-    const sbKeys = Object.keys(localStorage).filter((k) => k.startsWith('sb-') || k.startsWith('so-') || k.includes('supabase'));
+  if (typeof window !== 'undefined' && isAuthDebug()) {
     const raw = AUTH_STORAGE_KEY ? localStorage.getItem(AUTH_STORAGE_KEY) : null;
     const memSession = await getSession();
-    console.log('[teacherSignIn] 로그인 버튼 클릭 직후 캡처', {
-      data_session: data?.session ? { hasAccessToken: !!data.session.access_token, hasRefreshToken: !!data.session.refresh_token, userId: data.session.user?.id } : null,
-      error: error ? { message: error.message, code: error.code } : null,
-      localStorage_AUTH_STORAGE_KEY_exists: AUTH_STORAGE_KEY ? !!raw : null,
-      localStorage_AUTH_STORAGE_KEY_length: raw ? raw.length : 0,
-      storageKeyUsed: AUTH_STORAGE_KEY || '(default)',
-      localStorageKeys_sb_so: sbKeys,
-      getSessionRightAfter: memSession ? { userId: memSession.user?.id } : null,
+    console.log('[teacherSignIn] 로그인 직후', {
+      hasSession: !!data?.session,
+      error: error ? { message: error.message } : null,
+      storageKeyExists: AUTH_STORAGE_KEY ? !!raw : null,
+      getSessionOk: !!memSession,
     });
   }
 

@@ -1,3 +1,4 @@
+/** DEPRECATED: 사용처 없음. 앱은 src/lib/supabase/storage.ts 사용. */
 import { supabase } from './client';
 import { isSupabaseConfigured } from '../../config/supabase';
 import { DAILY_IMAGE_LIMIT } from '../../constants/limits';

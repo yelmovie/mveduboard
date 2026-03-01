@@ -1,3 +1,4 @@
+/** DEPRECATED: 사용처 없음. 앱은 src/lib/supabase/events.ts 사용. */
 import { isSupabaseConfigured } from '../../config/supabase';
 import { supabase } from './client';
 

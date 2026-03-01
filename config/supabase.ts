@@ -1,3 +1,4 @@
+/** DEPRECATED: 사용처 없음. 앱은 src/config/supabase.ts 사용. */
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 

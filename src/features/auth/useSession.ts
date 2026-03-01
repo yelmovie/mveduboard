@@ -1,3 +1,7 @@
+/**
+ * DEPRECATED: 현재 import 사용처 0건. 앱은 App.tsx + getSession() / onAuthStateChange 로 세션 관리.
+ * TODO: 필요 시 활용하거나, 사용처 없음 유지 시 제거 검토 (grep useSession 결과 0건 확인 후).
+ */
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase/client';
 import { getErrorMessage } from '../../utils/errors';

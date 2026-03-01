@@ -4,6 +4,7 @@ import {
   SUPABASE_ANON_KEY,
   isSupabaseConfigured,
   warnMissingSupabaseEnv,
+  isAuthDebug,
 } from '../../config/supabase';
 
 warnMissingSupabaseEnv();
@@ -32,7 +33,7 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
-if (supabase && typeof window !== 'undefined') {
+if (supabase && typeof window !== 'undefined' && isAuthDebug()) {
   const urlForLog = SUPABASE_URL ? SUPABASE_URL.replace(/\/$/, '') : '';
   console.log('[supabase client] supabaseUrl:', urlForLog, 'projectRef:', projectRef, 'storageKey:', AUTH_STORAGE_KEY || '(default)');
 }
