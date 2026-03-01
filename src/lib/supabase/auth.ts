@@ -4,25 +4,6 @@ import { MAX_STUDENTS_PER_CLASS } from '../../constants/limits';
 import { getErrorMessage } from '../../utils/errors';
 import { generateUUID } from '../../utils/uuid';
 
-const TEACHER_ID_SESSION_KEY = 'mveduboard_teacher_id';
-
-/** 로그인 성공 시 같은 탭에서 세션 읽기 실패 시 대비해 userId 보관 (로그아웃 시 삭제) */
-const setTeacherIdSession = (userId: string) => {
-  try {
-    if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(TEACHER_ID_SESSION_KEY, userId);
-  } catch {
-    /* ignore */
-  }
-};
-
-const clearTeacherIdSession = () => {
-  try {
-    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(TEACHER_ID_SESSION_KEY);
-  } catch {
-    /* ignore */
-  }
-};
-
 /** getSession/getUser가 실패할 때(다른 포트·도메인) localStorage에서 Supabase 세션 직접 읽기 */
 const getUserIdFromStorage = (): string | null => {
   if (typeof localStorage === 'undefined') return null;
@@ -100,7 +81,7 @@ export const teacherSignIn = async (email: string, password: string) => {
       // Don't fail login if this step fails
     }
   }
-  if (data?.user?.id) setTeacherIdSession(data.user.id);
+  
   return data;
 };
 
@@ -395,7 +376,6 @@ export const teacherSignUp = async (
   // Mode A: If session exists (email confirmation disabled), create school/class immediately
   if (sessionData.session) {
     console.log('[teacherSignUp] Mode A: Session exists, creating school/class immediately');
-    setTeacherIdSession(userId);
     const result = await createTeacherSchoolAndClass(userId, schoolName, className, displayName);
     return { success: true, joinCode: result.joinCode, requiresEmailConfirmation: false };
   }
@@ -418,7 +398,6 @@ export const teacherSignUp = async (
 };
 
 export const teacherSignOut = async () => {
-  clearTeacherIdSession();
   if (!supabase) return;
   await supabase.auth.signOut();
 };
@@ -558,14 +537,6 @@ export const updateTeacherProfile = async ({
       userId = userData?.user?.id ?? undefined;
     }
     if (!userId) userId = getUserIdFromStorage();
-    if (!userId && typeof sessionStorage !== 'undefined') {
-      try {
-        const stored = sessionStorage.getItem(TEACHER_ID_SESSION_KEY);
-        if (stored) userId = stored;
-      } catch {
-        /* ignore */
-      }
-    }
   }
   if (!userId) {
     const storageKeys: string[] = [];
