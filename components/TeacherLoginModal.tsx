@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Lock, LogIn, UserPlus } from 'lucide-react';
 import { logBetaEvent } from '../src/lib/supabase/events';
-import { teacherSignIn, teacherSignUp, resendSignupConfirmation } from '../src/lib/supabase/auth';
+import { teacherSignIn, teacherSignUp, resendSignupConfirmation, getSession } from '../src/lib/supabase/auth';
 
 interface TeacherLoginModalProps {
   onClose: () => void;
@@ -62,13 +62,23 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
           setRequiresEmailConfirmation(true);
           return; // Don't close modal, show success message and login button
         } else {
-          // Mode A: Immediate success
+          // Mode A: Immediate success — 세션 검증 후에만 대시보드 진입
+          const session = await getSession();
+          if (!session) {
+            setError('세션이 저장되지 않았습니다. 개발자도구(F12) → Network 탭에서 /auth/v1/token 요청의 status(200/401 등)를 확인해주세요.');
+            return;
+          }
           await logBetaEvent('login_success');
           onLoginSuccess();
           onClose();
         }
       } else {
         await teacherSignIn(email, password);
+        const session = await getSession();
+        if (!session) {
+          setError('세션이 저장되지 않았습니다. 개발자도구(F12) → Network 탭에서 /auth/v1/token 요청의 status(200/401 등)를 확인해주세요.');
+          return;
+        }
         await logBetaEvent('login_success');
         onLoginSuccess();
         onClose();
@@ -174,6 +184,9 @@ export const TeacherLoginModal: React.FC<TeacherLoginModalProps> = ({ onClose, o
             </span>
           </button>
 
+          <p className="text-xs text-gray-400 text-center">
+            로그인 오류 시: F12 → Network 탭에서 <code className="bg-gray-100 px-1 rounded">/auth/v1/token</code> 또는 <code className="bg-gray-100 px-1 rounded">/auth/v1/authorize</code> 요청의 status(200/401 등)를 확인하세요.
+          </p>
           <div className="flex items-center gap-3">
               <div className="h-px bg-gray-200 flex-1"></div>
               <span className="text-xs text-gray-400 font-medium">또는 비밀번호로 시작</span>

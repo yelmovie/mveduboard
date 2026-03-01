@@ -90,6 +90,12 @@ export default function App() {
     initProfile();
   }, []);
 
+  useEffect(() => {
+    if (currentApp === "dashboard" && !isTeacherLoggedIn) {
+      setCurrentApp(null);
+    }
+  }, [currentApp, isTeacherLoggedIn]);
+
   // Supabase auth 상태와 UI 동기화 (세션 복구/만료 시 대시보드 표시 정확히 유지)
   useEffect(() => {
     if (!supabase) return;
@@ -155,6 +161,10 @@ export default function App() {
   };
 
   const handleOpenDashboard = () => {
+    if (!isTeacherLoggedIn) {
+      setIsTeacherLoginOpen(true);
+      return;
+    }
     setCurrentApp("dashboard");
   };
 
@@ -195,6 +205,9 @@ export default function App() {
   }
 
   if (currentApp === "dashboard") {
+    if (!isTeacherLoggedIn) {
+      return null;
+    }
     return (
       <TeacherDashboard
         onSelectApp={handleSelectApp}

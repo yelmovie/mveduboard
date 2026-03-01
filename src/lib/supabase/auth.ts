@@ -26,9 +26,18 @@ const getUserIdFromStorage = (): string | null => {
         if (user?.id) return user.id;
       }
     }
+    if (projectRef) {
+      const soKey = `so-${projectRef}-auth-token`;
+      const raw = localStorage.getItem(soKey);
+      if (raw) {
+        const data = JSON.parse(raw);
+        const user = data?.user ?? data?.currentSession?.user ?? data?.session?.user;
+        if (user?.id) return user.id;
+      }
+    }
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k?.startsWith('sb-') && k?.endsWith('-auth-token')) {
+      if (k && (k.startsWith('sb-') || k.startsWith('so-')) && k.endsWith('-auth-token')) {
         const raw = localStorage.getItem(k);
         if (raw) {
           const data = JSON.parse(raw);
@@ -60,18 +69,16 @@ export const teacherSignIn = async (email: string, password: string) => {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (typeof window !== 'undefined') {
-    const sbKeys = Object.keys(localStorage).filter((k) => k.startsWith('sb-') || k.includes('supabase'));
+    const sbKeys = Object.keys(localStorage).filter((k) => k.startsWith('sb-') || k.startsWith('so-') || k.includes('supabase'));
     const raw = AUTH_STORAGE_KEY ? localStorage.getItem(AUTH_STORAGE_KEY) : null;
     const memSession = await getSession();
-    console.log('[teacherSignIn] signIn 직후', {
-      hasSession: !!data?.session,
-      access_token: data?.session ? (data.session.access_token ? `${data.session.access_token.length} chars` : null) : null,
-      refresh_token: !!data?.session?.refresh_token,
+    console.log('[teacherSignIn] 로그인 버튼 클릭 직후 캡처', {
+      data_session: data?.session ? { hasAccessToken: !!data.session.access_token, hasRefreshToken: !!data.session.refresh_token, userId: data.session.user?.id } : null,
       error: error ? { message: error.message, code: error.code } : null,
-      localStorageKeys: sbKeys,
+      localStorage_AUTH_STORAGE_KEY_exists: AUTH_STORAGE_KEY ? !!raw : null,
+      localStorage_AUTH_STORAGE_KEY_length: raw ? raw.length : 0,
       storageKeyUsed: AUTH_STORAGE_KEY || '(default)',
-      localStorageHasKey: AUTH_STORAGE_KEY ? !!raw : null,
-      localStorageValueLength: raw ? raw.length : 0,
+      localStorageKeys_sb_so: sbKeys,
       getSessionRightAfter: memSession ? { userId: memSession.user?.id } : null,
     });
   }
@@ -575,7 +582,7 @@ export const updateTeacherProfile = async ({
     if (typeof localStorage !== 'undefined') {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k?.startsWith('sb-') && k?.endsWith('-auth-token')) storageKeys.push(k);
+        if (k && (k.startsWith('sb-') || k.startsWith('so-')) && k.endsWith('-auth-token')) storageKeys.push(k);
       }
     }
     if (DEBUG_AUTH) {
