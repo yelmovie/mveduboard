@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Home, BookOpen, Clock, CalendarRange, Upload, Edit3, Check, Trash2, Plus, FileText, X, Utensils, Download } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Home, BookOpen, Clock, CalendarRange, Upload, Edit3, Check, Trash2, Plus, FileText, X, Utensils, Download, CheckCircle2, XCircle } from 'lucide-react';
 import { Participant, WeeklyStudyData, StudyPeriod, BellScheduleItem } from '../types';
 import * as studyService from '../services/studyService';
 import { BoardApp } from '../BoardApp';
@@ -42,6 +42,14 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
   const [editedBellSchedule, setEditedBellSchedule] = useState<BellScheduleItem[]>(DEFAULT_BELL_SCHEDULE);
   const [showUploadSuccess, setShowUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const showToast = useCallback((type: 'success' | 'error', message: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ type, message });
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }, []);
 
   useEffect(() => {
     void loadData();
@@ -73,12 +81,14 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
     try {
         await studyService.uploadStudySchedule(file);
         await loadData();
-        setShowUploadSuccess(true);
-        setTimeout(() => setShowUploadSuccess(false), 3000);
-    } catch (err: any) {
-        alert(err.message);
-    } finally {
         setIsProcessing(false);
+        setShowUploadSuccess(true);
+        setTimeout(() => setShowUploadSuccess(false), 4000);
+        showToast('success', '주간학습안내 파일이 등록되었습니다!');
+    } catch (err: any) {
+        setIsProcessing(false);
+        showToast('error', err.message || '업로드에 실패했습니다. 다시 시도해주세요.');
+    } finally {
         if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -183,7 +193,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
           <div className="min-h-screen bg-[#FEF9E7] flex flex-col items-center justify-center p-4">
               <div className="bg-white p-8 rounded-2xl shadow-xl text-center space-y-4 max-w-sm w-full">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FDA4AF] mx-auto"></div>
-                  <h2 className="text-xl font-bold text-[#78350F]">분석 중...</h2>
+                  <h2 className="text-xl font-bold text-[#78350F]">업로드 중...</h2>
               </div>
           </div>
       )
@@ -428,6 +438,21 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
             {activeTab === 'monthly' && <div className="flex-1 bg-white animate-fade-in-up overflow-hidden h-full"><BoardApp boardId="schoolplan" onBack={() => {}} isTeacherMode={isTeacherMode} student={student} onLoginRequest={onLoginRequest} embedded={true} /></div>}
             {activeTab === 'lunch' && <div className="flex-1 bg-white animate-fade-in-up overflow-hidden h-full"><LunchApp onBack={() => {}} isTeacherMode={isTeacherMode} embedded={true} /></div>}
         </main>
+
+        {/* Toast notification */}
+        {toast && (
+            <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[60] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-fade-in-up min-w-[320px] max-w-md ${
+                toast.type === 'success'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-red-600 text-white'
+            }`}>
+                {toast.type === 'success' ? <CheckCircle2 size={24} /> : <XCircle size={24} />}
+                <span className="font-bold text-base flex-1">{toast.message}</span>
+                <button onClick={() => setToast(null)} className="opacity-70 hover:opacity-100 p-1">
+                    <X size={18} />
+                </button>
+            </div>
+        )}
     </div>
   );
 };

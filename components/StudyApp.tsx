@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Home, Upload, BookOpen, Edit3, Check, X, FileText, Calendar, AlertCircle, Plus, Trash2, Clock, Download } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Home, Upload, BookOpen, Edit3, Check, X, FileText, Calendar, AlertCircle, Plus, Trash2, Clock, Download, CheckCircle2, XCircle } from 'lucide-react';
 import * as studyService from '../services/studyService';
 import { WeeklyStudyData, StudyPeriod, BellScheduleItem } from '../types';
 
@@ -32,6 +32,14 @@ export const StudyApp: React.FC<StudyAppProps> = ({ onBack, isTeacherMode }) => 
   const [isEditing, setIsEditing] = useState(false);
   const [editedPeriods, setEditedPeriods] = useState<StudyPeriod[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const showToast = useCallback((type: 'success' | 'error', message: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ type, message });
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }, []);
 
   useEffect(() => {
     void loadData();
@@ -62,14 +70,14 @@ export const StudyApp: React.FC<StudyAppProps> = ({ onBack, isTeacherMode }) => 
 
     setIsProcessing(true);
     try {
-        // Just upload, no analysis
         await studyService.uploadStudySchedule(file);
-        loadData();
-        alert('주간학습안내 파일이 등록되었습니다!');
-    } catch (err: any) {
-        alert(err.message);
-    } finally {
+        await loadData();
         setIsProcessing(false);
+        showToast('success', '주간학습안내 파일이 등록되었습니다!');
+    } catch (err: any) {
+        setIsProcessing(false);
+        showToast('error', err.message || '업로드에 실패했습니다. 다시 시도해주세요.');
+    } finally {
         if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -307,6 +315,21 @@ export const StudyApp: React.FC<StudyAppProps> = ({ onBack, isTeacherMode }) => 
                 </div>
             </div>
         </main>
+
+        {/* Toast notification */}
+        {toast && (
+            <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[60] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-fade-in-up min-w-[320px] max-w-md ${
+                toast.type === 'success'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-red-600 text-white'
+            }`}>
+                {toast.type === 'success' ? <CheckCircle2 size={24} /> : <XCircle size={24} />}
+                <span className="font-bold text-base flex-1">{toast.message}</span>
+                <button onClick={() => setToast(null)} className="opacity-70 hover:opacity-100 p-1">
+                    <X size={18} />
+                </button>
+            </div>
+        )}
 
         {/* Modal: Original File */}
         {showOriginal && data?.fileUrl && (
