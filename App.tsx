@@ -67,6 +67,7 @@ export default function App() {
   // Bootstrap: TEMP debug log (no tokens); redact URL after '#'
   useEffect(() => {
     if (!supabase || typeof window === "undefined") return;
+    if (pathname.startsWith("/reset-password")) return;
     const href = window.location.href;
     const redacted = href.includes("#") ? href.split("#")[0] + "#..." : href;
     const hashHasAccessToken = window.location.hash.includes("access_token");
@@ -74,10 +75,11 @@ export default function App() {
       if (isAuthDebug()) {
         console.log("[auth bootstrap] url (redacted):", redacted, "hashHasAccessToken:", hashHasAccessToken, "getSession:", s ? "ok" : "null");
       }
-    });
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
+    if (pathname.startsWith("/reset-password")) return;
     const initProfile = async () => {
       if (!supabase) return;
       let session = await getSession();
@@ -118,9 +120,14 @@ export default function App() {
   // Supabase auth 상태와 UI 동기화 (세션 복구/만료 시 대시보드 표시 정확히 유지)
   useEffect(() => {
     if (!supabase) return;
+    const isResetPage = typeof window !== "undefined" && window.location.pathname.startsWith("/reset-password");
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (typeof window !== "undefined" && isAuthDebug()) {
         console.log("[onAuthStateChange]", event, "session:", session ? "있음" : "null");
+      }
+      // /reset-password 페이지에서는 recovery 세션 처리를 ResetPasswordPage에 위임
+      if (isResetPage && (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        return;
       }
       // INITIAL_SESSION with null can happen before URL hash is processed (OAuth callback); defer and re-check
       if (event === "INITIAL_SESSION" && !session && typeof window !== "undefined" && window.location.hash.includes("access_token")) {

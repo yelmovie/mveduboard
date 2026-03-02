@@ -19,21 +19,36 @@ export function ResetPasswordPage() {
       setReady(true);
       return;
     }
-    const init = async () => {
-      const s = await getSession();
-      if (s) {
+
+    let cancelled = false;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
+      if (event === 'PASSWORD_RECOVERY' || session) {
         setHasRecoverySession(true);
-        setReady(true);
-        return;
       }
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-        if (event === 'PASSWORD_RECOVERY' || s) setHasRecoverySession(true);
-        setReady(true);
-      });
-      setTimeout(() => setReady(true), 500);
-      return () => subscription.unsubscribe();
+      setReady(true);
+    });
+
+    getSession()
+      .then((s) => {
+        if (cancelled) return;
+        if (s) {
+          setHasRecoverySession(true);
+          setReady(true);
+        }
+      })
+      .catch(() => {});
+
+    const timer = setTimeout(() => {
+      if (!cancelled) setReady(true);
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+      clearTimeout(timer);
     };
-    init();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
