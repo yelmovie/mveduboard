@@ -382,6 +382,23 @@ export const updatePostStatus = async (postId: string, status: PostStatus, board
   }
 };
 
+export const editPost = async (
+  postId: string,
+  boardId: string,
+  updates: Partial<Pick<Post, 'title' | 'body' | 'event_date' | 'color'>>
+): Promise<void> => {
+  const posts = await getPosts(boardId);
+  const updatedPosts = posts.map(p =>
+    p.id === postId ? { ...p, ...updates } : p
+  );
+  const key = `${LS_KEYS.POSTS}_${boardId}`;
+  try {
+    localStorage.setItem(key, JSON.stringify(updatedPosts));
+  } catch {
+    alert('저장 공간 부족으로 수정을 반영할 수 없습니다.');
+  }
+};
+
 export const deletePost = async (postId: string, boardId: string = 'board'): Promise<void> => {
   const posts = await getPosts(boardId);
   const updatedPosts = posts.filter(p => p.id !== postId);

@@ -43,7 +43,7 @@ export const StudyApp: React.FC<StudyAppProps> = ({ onBack, isTeacherMode }) => 
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [isTeacherMode]);
 
   const loadData = async () => {
     const studyData = await studyService.getStudyDataAsync();

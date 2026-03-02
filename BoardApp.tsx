@@ -126,6 +126,16 @@ export const BoardApp: React.FC<BoardAppProps> = ({
     setBoard(updated);
   };
 
+  const handleDeletePost = async (postId: string) => {
+    await api.deletePost(postId, boardId);
+    loadPosts();
+  };
+
+  const handleEditPost = async (postId: string, updates: { title: string; body: string }) => {
+    await api.editPost(postId, boardId, updates);
+    loadPosts();
+  };
+
   const handleUpdateBoard = async (updatedBoard: Board) => {
       await api.updateBoardSettings(updatedBoard, boardId);
       setBoard(updatedBoard);
@@ -324,7 +334,10 @@ export const BoardApp: React.FC<BoardAppProps> = ({
                                 role={role} 
                                 currentUser={student} 
                                 onStatusChange={handleStatusChange}
-                                onRefresh={loadPosts} 
+                                onRefresh={loadPosts}
+                                onDeletePost={handleDeletePost}
+                                onEditPost={handleEditPost}
+                                boardId={boardId}
                              />
                          </div>
                     </div>
@@ -347,7 +360,10 @@ export const BoardApp: React.FC<BoardAppProps> = ({
                     role={role} 
                     currentUser={student} 
                     onStatusChange={handleStatusChange}
-                    onRefresh={loadPosts} 
+                    onRefresh={loadPosts}
+                    onDeletePost={handleDeletePost}
+                    onEditPost={handleEditPost}
+                    boardId={boardId}
                   />
                 );
             })}

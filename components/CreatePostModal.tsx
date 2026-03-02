@@ -269,6 +269,18 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ layout, onClos
                 return;
             }
 
+            if (uploadResult.status === 'upload_failed') {
+                const errMsg = (uploadResult as any).error?.message || '알 수 없는 오류';
+                console.error('[upload] failed:', errMsg);
+                setUploadError(`이미지 업로드 실패: ${errMsg}`);
+                return;
+            }
+
+            if (uploadResult.status === 'not_configured') {
+                setUploadNotice('업로드가 준비되지 않아 로컬에만 저장됩니다.');
+                return;
+            }
+
             if (uploadResult.status !== 'uploaded') {
                 setUploadNotice('업로드가 준비되지 않아 로컬에만 저장됩니다.');
                 return;
@@ -363,6 +375,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ layout, onClos
           if (uploadResult.status === 'quota_blocked') {
             setUploadError(`오늘은 이미지 ${DAILY_IMAGE_LIMIT}장까지 업로드할 수 있어요. 내일 다시 업로드할 수 있어요 🙂`);
             await logBetaEvent('upload_blocked_daily_limit');
+            continue;
+          }
+
+          if (uploadResult.status === 'upload_failed') {
+            const errMsg = (uploadResult as any).error?.message || '알 수 없는 오류';
+            console.error('[upload] multi failed:', errMsg);
+            setUploadError(`이미지 업로드 실패: ${errMsg}`);
+            nextPaths.push('');
             continue;
           }
 

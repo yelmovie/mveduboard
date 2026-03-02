@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Post, Comment, UserRole, Participant } from '../types';
-import { MessageSquare, Heart, Clock, CheckCircle, XCircle, SmilePlus, CheckSquare, Square, Calculator, Send } from 'lucide-react';
+import { MessageSquare, Heart, Clock, CheckCircle, XCircle, SmilePlus, CheckSquare, Square, Calculator, Send, Pencil, Trash2, Save, X } from 'lucide-react';
 import * as api from '../services/boardService';
 import { createSignedUrl } from '../src/lib/supabase/storage';
 
@@ -12,9 +12,11 @@ interface PostCardProps {
   onStatusChange: (postId: string, status: 'approved' | 'rejected') => void;
   onRefresh?: () => void;
   boardId?: string;
+  onDeletePost?: (postId: string) => void;
+  onEditPost?: (postId: string, updates: { title: string; body: string }) => void;
 }
 
-export const PostCard: React.FC<PostCardProps> = ({ post, role, currentUser, onStatusChange, onRefresh, boardId }) => {
+export const PostCard: React.FC<PostCardProps> = ({ post, role, currentUser, onStatusChange, onRefresh, boardId, onDeletePost, onEditPost }) => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState('');
@@ -24,6 +26,12 @@ export const PostCard: React.FC<PostCardProps> = ({ post, role, currentUser, onS
   const [isChecked, setIsChecked] = useState(post.is_corrected || false);
   const [resolvedAttachmentUrl, setResolvedAttachmentUrl] = useState<string | null>(post.attachment_url || null);
   const [resolvedAttachmentUrls, setResolvedAttachmentUrls] = useState<string[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(post.title);
+  const [editBody, setEditBody] = useState(post.body);
+
+  const isTeacherPost = post.author_name === '선생님';
+  const canManagePost = role === 'teacher' && isTeacherPost;
 
   useEffect(() => {
     if (showComments) {
@@ -291,12 +299,73 @@ export const PostCard: React.FC<PostCardProps> = ({ post, role, currentUser, onS
       )}
 
       <div className="p-6 relative">
-        <h3 className="font-hand font-bold text-2xl text-[#78350F] mb-2 leading-tight">{post.title}</h3>
-        <div className="text-sm text-[#92400E] mb-4 flex justify-between items-center opacity-80">
-          <span className="font-bold text-[#0EA5E9] text-base">{post.author_name}</span>
-          <span>{new Date(post.created_at).toLocaleDateString()}</span>
-        </div>
-        <p className="text-[#78350F] text-lg whitespace-pre-wrap mb-6 leading-relaxed">{post.body}</p>
+        {isEditing ? (
+          <div className="space-y-3 mb-4">
+            <input
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-lg font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            />
+            <textarea
+              value={editBody}
+              onChange={(e) => setEditBody(e.target.value)}
+              rows={4}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (!editTitle.trim()) { alert('제목을 입력해주세요.'); return; }
+                  onEditPost?.(post.id, { title: editTitle.trim(), body: editBody.trim() });
+                  setIsEditing(false);
+                }}
+                className="flex items-center gap-1 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"
+              >
+                <Save size={16} /> 저장
+              </button>
+              <button
+                onClick={() => { setIsEditing(false); setEditTitle(post.title); setEditBody(post.body); }}
+                className="flex items-center gap-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-300"
+              >
+                <X size={16} /> 취소
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h3 className="font-hand font-bold text-2xl text-[#78350F] mb-2 leading-tight">{post.title}</h3>
+            <div className="text-sm text-[#92400E] mb-4 flex justify-between items-center opacity-80">
+              <span className="font-bold text-[#0EA5E9] text-base">{post.author_name}</span>
+              <div className="flex items-center gap-2">
+                <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                {canManagePost && (
+                  <div className="flex gap-1 ml-2">
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                      title="수정"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('이 게시물을 삭제하시겠습니까?')) {
+                          onDeletePost?.(post.id);
+                        }
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                      title="삭제"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <p className="text-[#78350F] text-lg whitespace-pre-wrap mb-6 leading-relaxed">{post.body}</p>
+          </>
+        )}
         
         {post.event_date && (
             <div className="mb-6 inline-block bg-[#E0F2FE] text-[#0369A1] px-4 py-2 rounded-xl text-sm font-bold border border-[#BAE6FD]">

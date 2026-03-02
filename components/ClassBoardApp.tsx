@@ -64,7 +64,7 @@ export const ClassBoardApp: React.FC<ClassBoardAppProps> = ({ onBack, isTeacherM
 
       <main className="flex-1 relative overflow-hidden bg-[#FEF9E7] min-h-0 flex flex-col">
         <div className="h-full w-full relative overflow-y-auto min-h-0 flex flex-col">
-            {activeTab === 'board' && <BoardApp boardId="board" onBack={onBack} isTeacherMode={isTeacherMode} student={student} onLoginRequest={onLoginRequest} embedded={true} />}
+            {activeTab === 'board' && <BoardApp boardId="board" onBack={onBack} isTeacherMode={isTeacherMode} student={student} onLoginRequest={onLoginRequest} embedded={true} allowStudentPost={false} />}
             {activeTab === 'gallery' && <BoardApp boardId="gallery" onBack={onBack} isTeacherMode={isTeacherMode} student={student} onLoginRequest={onLoginRequest} embedded={true} />}
             {activeTab === 'album' && <BoardApp boardId="album" onBack={onBack} isTeacherMode={isTeacherMode} student={student} onLoginRequest={onLoginRequest} embedded={true} allowStudentPost={false} />}
             {activeTab === 'manga' && <MangaApp onBack={onBack} isTeacherMode={isTeacherMode} student={student} onLoginRequest={onLoginRequest} embedded={true} />}

@@ -61,7 +61,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [isTeacherMode]);
 
   const loadData = async () => {
     const data = await studyService.getStudyDataAsync();
@@ -137,13 +137,49 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
     showToast('success', '학교 월간교육계획 파일이 삭제되었습니다.');
   };
 
-  const handleAnalyzeSchedule = async (file?: File | null) => {
-    const targetFile = file || lastUploadedFileRef.current;
-    if (!targetFile) {
-      showToast('error', '분석할 파일이 없습니다. 주간학습안내를 먼저 업로드해주세요.');
-      return;
+  const resolveAnalysisFile = async (): Promise<File | null> => {
+    if (lastUploadedFileRef.current) return lastUploadedFileRef.current;
+    if (!studyData) return null;
+
+    if (studyData.fileUrl && studyData.fileUrl.startsWith('data:')) {
+      const res = await fetch(studyData.fileUrl);
+      const blob = await res.blob();
+      const ext = studyData.fileType === 'pdf' ? 'pdf' : 'png';
+      const mimeType = studyData.fileType === 'pdf' ? 'application/pdf' : 'image/png';
+      return new File([blob], `weekly-guide.${ext}`, { type: mimeType });
     }
-    setIsAnalyzing(true);
+
+    if (studyData.fileUrl && studyData.fileUrl.startsWith('http')) {
+      try {
+        const res = await fetch(studyData.fileUrl);
+        const blob = await res.blob();
+        const ext = studyData.fileType === 'pdf' ? 'pdf' : 'png';
+        return new File([blob], `weekly-guide.${ext}`, { type: blob.type || 'image/png' });
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  };
+
+  const handleAnalyzeSchedule = async (file?: File | null) => {
+    let targetFile = file || lastUploadedFileRef.current;
+    if (!targetFile) {
+      setIsAnalyzing(true);
+      try {
+        targetFile = await resolveAnalysisFile();
+      } catch {
+        targetFile = null;
+      }
+      if (!targetFile) {
+        setIsAnalyzing(false);
+        showToast('error', '분석할 파일이 없습니다. 주간학습안내를 먼저 업로드해주세요.');
+        return;
+      }
+    } else {
+      setIsAnalyzing(true);
+    }
     try {
       const schedules = await analyzeScheduleFromFile(targetFile);
       const dayCount = Object.keys(schedules).length;

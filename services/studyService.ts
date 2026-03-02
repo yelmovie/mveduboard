@@ -117,7 +117,11 @@ export const getStudyData = (): WeeklyStudyData | null => {
 };
 
 export const getStudyDataAsync = async (): Promise<WeeklyStudyData | null> => {
-  const profile = await getCurrentUserProfile();
+  let profile = await getCurrentUserProfile();
+  if (!profile?.class_id && supabase) {
+    await new Promise(r => setTimeout(r, 500));
+    profile = await getCurrentUserProfile();
+  }
   const classId = profile?.class_id ?? null;
   const localData = getStudyDataLocal(classId);
   if (!supabase || !classId) return localData;
@@ -369,7 +373,11 @@ const ensureMonthlyPlanSignedUrl = async (data: MonthlyPlanData | null) => {
 };
 
 export const getMonthlyPlanAsync = async (): Promise<MonthlyPlanData | null> => {
-  const profile = await getCurrentUserProfile();
+  let profile = await getCurrentUserProfile();
+  if (!profile?.class_id && supabase) {
+    await new Promise(r => setTimeout(r, 500));
+    profile = await getCurrentUserProfile();
+  }
   const classId = profile?.class_id ?? null;
   const local = getMonthlyPlanLocal(classId);
   if (!supabase || !classId) return ensureMonthlyPlanSignedUrl(local);
