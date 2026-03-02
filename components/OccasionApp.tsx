@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Home, Calendar, Video, FileText, Download, PlayCircle, Layers, Info, ExternalLink, Youtube, FileBarChart, HelpCircle, LayoutGrid, BookOpen, Plus, Bot, MonitorPlay, X, Check, Brain, Share2, Globe, FileUp, Paperclip } from 'lucide-react';
+import { Home, Calendar, Video, FileText, Download, PlayCircle, Layers, Info, ExternalLink, Youtube, FileBarChart, HelpCircle, LayoutGrid, BookOpen, Plus, Bot, MonitorPlay, X, Check, Brain, Share2, Globe, FileUp, Paperclip, Trash2 } from 'lucide-react';
 import * as occasionService from '../services/occasionService';
 import { OccasionTopic, CommonOccasionTopic, OccasionMaterial, OccasionQuiz } from '../types';
 import { SharedMaterial } from '../services/occasionService';
@@ -62,15 +62,25 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
     }
   }, [isTeacherMode, tab]);
 
-  const loadData = () => {
+  const loadData = (refreshSelected = false) => {
     if (tab === 'monthly') {
         const data = occasionService.getOccasionData(selectedMonth);
         setTopics(data);
-        if (data.length > 0 && !selectedTopic) setSelectedTopic(data[0]);
+        if (refreshSelected && selectedTopic) {
+            const updated = data.find(t => t.id === selectedTopic.id);
+            if (updated) setSelectedTopic(updated);
+        } else if (data.length > 0 && !selectedTopic) {
+            setSelectedTopic(data[0]);
+        }
     } else if (tab === 'common') {
         const commonData = occasionService.getCommonOccasionData();
         setCommonTopics(commonData);
-        if (commonData.length > 0 && !selectedTopic) setSelectedTopic(commonData[0]);
+        if (refreshSelected && selectedTopic) {
+            const updated = commonData.find(t => t.id === selectedTopic.id);
+            if (updated) setSelectedTopic(updated);
+        } else if (commonData.length > 0 && !selectedTopic) {
+            setSelectedTopic(commonData[0]);
+        }
     } else if (tab === 'share') {
         const shared = occasionService.getSharedMaterials();
         setSharedMaterials(shared);
@@ -120,6 +130,15 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
   };
 
   // --- Sharing & Importing Handlers ---
+
+  const handleDeleteMaterial = (material: OccasionMaterial, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!selectedTopic) return;
+      if (!confirm(`'${material.title}' 자료를 삭제하시겠습니까?`)) return;
+      const monthKey = tab === 'monthly' ? selectedMonth : 'common';
+      occasionService.deleteMaterial(monthKey, selectedTopic.id, material.id);
+      loadData(true);
+  };
 
   const handleShare = (material: OccasionMaterial, e: React.MouseEvent) => {
       e.stopPropagation();
@@ -673,14 +692,24 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
                                                     <ExternalLink size={16} />
                                                 )}
                                             </div>
-                                            {/* Share Button */}
-                                            <button 
-                                                onClick={(e) => handleShare(material, e)}
-                                                className="text-gray-400 hover:text-cyan-600 p-1 rounded hover:bg-cyan-50 transition-colors"
-                                                title="공유방에 공유하기"
-                                            >
-                                                <Share2 size={18} />
-                                            </button>
+                                            <div className="flex items-center gap-1">
+                                                <button 
+                                                    onClick={(e) => handleShare(material, e)}
+                                                    className="text-gray-400 hover:text-cyan-600 p-1 rounded hover:bg-cyan-50 transition-colors"
+                                                    title="공유방에 공유하기"
+                                                >
+                                                    <Share2 size={18} />
+                                                </button>
+                                                {isTeacherMode && (
+                                                    <button 
+                                                        onClick={(e) => handleDeleteMaterial(material, e)}
+                                                        className="text-gray-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors"
+                                                        title="자료 삭제"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

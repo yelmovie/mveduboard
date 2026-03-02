@@ -138,30 +138,51 @@ export const generateWordPairsWithAI = async (
     console.error('[bingoService] OpenAI API Key not found');
     return [];
   }
-  const prompt = buildBingoAiPrompt(topic, count);
-  try {
-    const text = await generateText(prompt, { maxTokens: 512 }, BINGO_AI_PROMPT_SYSTEM);
-    const parsed = extractJsonArray(text);
-    const list = Array.isArray(parsed) ? parsed : [];
-    const normalized = list
-      .map((item: any) => ({
-        word: String(item?.word || '').trim(),
-        meaning: String(item?.meaning || '').trim(),
-      }))
-      .filter((item) => item.word && item.meaning)
-      .filter((item) => item.word.length >= BINGO_AI_MIN_WORD_LEN && item.word.length <= BINGO_AI_MAX_WORD_LEN);
-    const seen = new Set<string>();
-    const unique = normalized.filter((item) => {
-      const key = item.word.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    return unique.slice(0, count);
-  } catch (e) {
-    console.error('[bingoService] generateWordPairsWithAI error', e);
-    return [];
+
+  const maxTokens = Math.max(1024, count * 60);
+  let allResults: { word: string; meaning: string }[] = [];
+  const seen = new Set<string>();
+  const maxRetries = 2;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const remaining = count - allResults.length;
+    if (remaining <= 0) break;
+
+    const requestCount = attempt === 0 ? count : remaining + 3;
+    const prompt = buildBingoAiPrompt(topic, requestCount);
+
+    try {
+      const text = await generateText(prompt, { maxTokens }, BINGO_AI_PROMPT_SYSTEM);
+      const parsed = extractJsonArray(text);
+      const list = Array.isArray(parsed) ? parsed : [];
+      const normalized = list
+        .map((item: any) => ({
+          word: String(item?.word || '').trim(),
+          meaning: String(item?.meaning || '').trim(),
+        }))
+        .filter((item) => item.word && item.meaning)
+        .filter(
+          (item) =>
+            item.word.length >= BINGO_AI_MIN_WORD_LEN &&
+            item.word.length <= BINGO_AI_MAX_WORD_LEN
+        );
+
+      for (const item of normalized) {
+        const key = item.word.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          allResults.push(item);
+        }
+      }
+
+      if (allResults.length >= count) break;
+    } catch (e) {
+      console.error(`[bingoService] generateWordPairsWithAI attempt ${attempt} error`, e);
+      if (attempt === maxRetries) break;
+    }
   }
+
+  return allResults.slice(0, count);
 };
 
 // --- Player Management (Student) ---

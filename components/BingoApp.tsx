@@ -635,13 +635,18 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
           const count = form.aiCount;
           const pairs = await bingoService.generateWordPairsWithAI(form.topic, count);
           if (pairs.length === 0) {
-              setAiError('단어 생성에 실패했습니다. 다른 주제로 시도해주세요.');
+              setAiError('단어 생성에 실패했습니다. 주제를 더 구체적으로 입력해주세요.');
               return;
           }
           setForm((prev) => ({
             ...prev,
             wordsText: pairs.map((item) => item.word).join('\n'),
           }));
+          if (pairs.length < count) {
+              setAiError(`${pairs.length}개만 생성되었습니다 (요청: ${count}개). 추가 단어를 직접 입력하거나 다시 시도해주세요.`);
+          }
+      } catch {
+          setAiError('AI 생성 중 오류가 발생했습니다. 다시 시도해주세요.');
       } finally {
           setIsGenerating(false);
       }
@@ -905,7 +910,17 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
                                   단어 목록 <span className="text-xs font-normal text-slate-400 ml-2">(최소 {form.size*form.size}개)</span>
                               </label>
                               {isTeacherMode && (
-                                  <div className="mb-3 space-y-2">
+                                  <div className="mb-3 space-y-3">
+                                      <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-3 space-y-1">
+                                          <div className="text-xs font-semibold text-indigo-300">AI 단어 생성 가이드</div>
+                                          <div className="text-xs text-slate-400 leading-relaxed">
+                                              한글로 주제를 입력하면 한글 단어가 생성됩니다.<br/>
+                                              영어로 입력하면 영어 단어가 생성됩니다.
+                                          </div>
+                                          <div className="text-xs text-slate-500 mt-1">
+                                              예: "한국의 독립운동가", "봄에 피는 꽃", "Animals in the zoo"
+                                          </div>
+                                      </div>
                                       <input
                                         type="text"
                                         value={form.topic}
@@ -915,27 +930,28 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
                                             if (aiError) setAiError('');
                                         }}
                                         className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-fuchsia-500 focus:outline-none placeholder-slate-600 pointer-events-auto"
-                                        placeholder="주제 입력 (단어 또는 1~3문장)"
+                                        placeholder="예: 한국의 독립운동가, 과학 용어, Spring flowers..."
                                       />
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center justify-between">
                                         <div className="text-xs text-slate-400">
-                                          생성 개수: {form.aiCount}개
+                                          생성 개수: <span className="text-white font-semibold">{form.aiCount}개</span> ({form.size}x{form.size} 빙고판 기준)
                                         </div>
                                       </div>
                                       <button
                                         onClick={handleGenerateWords}
                                         disabled={isGenerating}
-                                        className="w-full bg-slate-800 border border-slate-600 text-slate-100 rounded-xl py-2 font-bold hover:bg-slate-700 disabled:opacity-50"
+                                        className="w-full bg-gradient-to-r from-fuchsia-700 to-violet-700 border border-fuchsia-500/30 text-white rounded-xl py-3 font-bold hover:from-fuchsia-600 hover:to-violet-600 disabled:opacity-50 flex items-center justify-center gap-2"
                                       >
-                                          {isGenerating ? '생성 중...' : 'AI로 단어 자동 생성'}
+                                          <Sparkles size={18} />
+                                          {isGenerating ? 'AI 생성 중...' : 'AI로 단어 자동 생성'}
                                       </button>
                                       {aiError && (
-                                        <div className="flex items-center justify-between text-xs text-rose-400">
+                                        <div className="flex items-center justify-between text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
                                           <span>{aiError}</span>
                                           <button
                                             type="button"
                                             onClick={handleGenerateWords}
-                                            className="text-rose-200 underline"
+                                            className="text-rose-200 underline font-semibold"
                                           >
                                             다시 시도
                                           </button>

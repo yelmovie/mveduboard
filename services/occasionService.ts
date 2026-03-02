@@ -39,6 +39,31 @@ export const saveCustomMaterial = (month: number | string, topicId: string, mate
     localStorage.setItem(LS_KEY, JSON.stringify(allCustom));
 };
 
+const LS_HIDDEN_KEY = 'edu_occasion_hidden_materials';
+
+const getHiddenIds = (): string[] => {
+    const stored = localStorage.getItem(LS_HIDDEN_KEY);
+    return stored ? JSON.parse(stored) : [];
+};
+
+export const deleteMaterial = (month: number | string, topicId: string, materialId: string) => {
+    const allCustom = getStoredCustomMaterials();
+    const key = `${month}-${topicId}`;
+    const customList = allCustom[key] || [];
+    const isCustom = customList.some(m => m.id === materialId);
+
+    if (isCustom) {
+        allCustom[key] = customList.filter(m => m.id !== materialId);
+        localStorage.setItem(LS_KEY, JSON.stringify(allCustom));
+    } else {
+        const hidden = getHiddenIds();
+        if (!hidden.includes(materialId)) {
+            hidden.push(materialId);
+            localStorage.setItem(LS_HIDDEN_KEY, JSON.stringify(hidden));
+        }
+    }
+};
+
 // --- Shared / Community Logic ---
 
 const INITIAL_SHARED: SharedMaterial[] = [
@@ -189,25 +214,27 @@ const COMMON_OCCASION_DB: CommonOccasionTopic[] = [
 export const getOccasionData = (month: number): OccasionTopic[] => {
   const staticData = OCCASION_DB[month] || [];
   const customMaterials = getStoredCustomMaterials();
+  const hidden = getHiddenIds();
 
   return staticData.map(topic => {
       const key = `${month}-${topic.id}`;
       const custom = customMaterials[key] || [];
       return {
           ...topic,
-          materials: [...custom, ...topic.materials] // Show custom first
+          materials: [...custom, ...topic.materials].filter(m => !hidden.includes(m.id))
       };
   });
 };
 
 export const getCommonOccasionData = (): CommonOccasionTopic[] => {
     const customMaterials = getStoredCustomMaterials();
+    const hidden = getHiddenIds();
     return COMMON_OCCASION_DB.map(topic => {
         const key = `common-${topic.id}`;
         const custom = customMaterials[key] || [];
         return {
             ...topic,
-            materials: [...custom, ...topic.materials]
+            materials: [...custom, ...topic.materials].filter(m => !hidden.includes(m.id))
         };
     });
 }
