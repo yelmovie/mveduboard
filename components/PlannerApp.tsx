@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Home, BookOpen, Clock, CalendarRange, Upload, Edit3, Check, Trash2, Plus, FileText, X, Utensils, Download, CheckCircle2, XCircle } from 'lucide-react';
+import { Home, BookOpen, Clock, CalendarRange, Upload, Edit3, Check, Trash2, Plus, FileText, X, Utensils, Download, CheckCircle2, XCircle, Sparkles, Loader2 } from 'lucide-react';
 import { Participant, WeeklyStudyData, StudyPeriod, BellScheduleItem } from '../types';
 import * as studyService from '../services/studyService';
 import type { MonthlyPlanData } from '../services/studyService';
+import { analyzeScheduleFromFile } from '../services/scheduleAnalyzer';
 import { LunchApp } from './LunchApp';
 
 interface PlannerAppProps {
@@ -42,6 +43,8 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
   const [editedBellSchedule, setEditedBellSchedule] = useState<BellScheduleItem[]>(DEFAULT_BELL_SCHEDULE);
   const [showUploadSuccess, setShowUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const lastUploadedFileRef = useRef<File | null>(null);
 
   const [monthlyPlan, setMonthlyPlan] = useState<MonthlyPlanData | null>(null);
   const [isMonthlyProcessing, setIsMonthlyProcessing] = useState(false);
@@ -86,13 +89,15 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
         return;
     }
     setIsProcessing(true);
+    lastUploadedFileRef.current = file;
     try {
         await studyService.uploadStudySchedule(file);
         await loadData();
         setIsProcessing(false);
         setShowUploadSuccess(true);
         setTimeout(() => setShowUploadSuccess(false), 4000);
-        showToast('success', '주간학습안내 파일이 등록되었습니다!');
+        showToast('success', '파일 등록 완료! 시간표를 자동 분석합니다...');
+        handleAnalyzeSchedule(file);
     } catch (err: any) {
         setIsProcessing(false);
         showToast('error', err.message || '업로드에 실패했습니다. 다시 시도해주세요.');
@@ -130,6 +135,31 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
     await studyService.deleteMonthlyPlanAsync();
     await loadData();
     showToast('success', '학교 월간교육계획 파일이 삭제되었습니다.');
+  };
+
+  const handleAnalyzeSchedule = async (file?: File | null) => {
+    const targetFile = file || lastUploadedFileRef.current;
+    if (!targetFile) {
+      showToast('error', '분석할 파일이 없습니다. 주간학습안내를 먼저 업로드해주세요.');
+      return;
+    }
+    setIsAnalyzing(true);
+    try {
+      const schedules = await analyzeScheduleFromFile(targetFile);
+      const dayCount = Object.keys(schedules).length;
+      if (dayCount === 0) {
+        showToast('error', '시간표를 추출할 수 없었습니다. 직접 입력해주세요.');
+        return;
+      }
+      await studyService.mergeAnalyzedSchedules(schedules);
+      await loadData();
+      showToast('success', `시간표 자동 분석 완료! (${dayCount}일치 추출)`);
+    } catch (err: any) {
+      console.error('[PlannerApp] AI analysis error', err);
+      showToast('error', err.message || 'AI 분석에 실패했습니다.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleDeleteGuide = async () => {
@@ -290,12 +320,25 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
                                         </button>
                                     )}
                                     {(studyData?.fileUrl || studyData?.filePath) && (
-                                        <button
-                                            onClick={handleDeleteGuide}
-                                            className="h-12 px-6 rounded-xl text-lg font-bold flex items-center gap-2 bg-white text-[#F43F5E] border-2 border-[#FCA5A5] hover:bg-[#FFE4E6] shadow-sm"
-                                        >
-                                            <Trash2 size={18} /> 삭제
-                                        </button>
+                                        <>
+                                            <button
+                                                onClick={() => handleAnalyzeSchedule()}
+                                                disabled={isAnalyzing}
+                                                className="h-12 px-6 rounded-xl text-lg font-bold flex items-center gap-2 shadow-md transition-all bg-violet-500 text-white hover:bg-violet-600 disabled:bg-gray-400"
+                                            >
+                                                {isAnalyzing ? (
+                                                    <><Loader2 size={20} className="animate-spin" /> 분석 중...</>
+                                                ) : (
+                                                    <><Sparkles size={20} /> AI 시간표 분석</>
+                                                )}
+                                            </button>
+                                            <button
+                                                onClick={handleDeleteGuide}
+                                                className="h-12 px-6 rounded-xl text-lg font-bold flex items-center gap-2 bg-white text-[#F43F5E] border-2 border-[#FCA5A5] hover:bg-[#FFE4E6] shadow-sm"
+                                            >
+                                                <Trash2 size={18} /> 삭제
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             )}
@@ -330,8 +373,44 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
 
             {activeTab === 'timetable' && (
                 <div className="flex-1 p-6 md:p-10 overflow-y-auto max-w-[1920px] mx-auto w-full animate-fade-in-up">
-                    <div className="text-center mb-8">
-                        <h2 className="text-4xl font-hand font-bold text-[#78350F] mb-2">{getDateString()} 오늘의 시간표</h2>
+                    <div className="text-center mb-6">
+                        <h2 className="text-4xl font-hand font-bold text-[#78350F] mb-4">{getDateString()} 시간표</h2>
+                        <div className="flex justify-center gap-2 flex-wrap">
+                            {(() => {
+                                const d = new Date(todayDate || new Date());
+                                const dayOfWeek = d.getDay() || 7;
+                                const monday = new Date(d);
+                                monday.setDate(d.getDate() - (dayOfWeek - 1));
+                                const labels = ['월', '화', '수', '목', '금'];
+                                return labels.map((label, i) => {
+                                    const date = new Date(monday);
+                                    date.setDate(monday.getDate() + i);
+                                    const dateStr = date.toISOString().split('T')[0];
+                                    const isSelected = dateStr === todayDate;
+                                    const hasPeriods = studyData?.schedules?.[dateStr]?.length > 0;
+                                    return (
+                                        <button
+                                            key={dateStr}
+                                            onClick={() => {
+                                                setTodayDate(dateStr);
+                                                const periods = studyData?.schedules?.[dateStr] || [];
+                                                setTodayPeriods(periods);
+                                                setEditedPeriods(periods);
+                                            }}
+                                            className={`px-5 py-2.5 rounded-xl font-bold text-lg transition-all ${
+                                                isSelected
+                                                    ? 'bg-[#FDA4AF] text-white shadow-md'
+                                                    : hasPeriods
+                                                    ? 'bg-[#FFE4E6] text-[#BE185D] border-2 border-[#FDA4AF]'
+                                                    : 'bg-gray-100 text-gray-500 border-2 border-gray-200'
+                                            }`}
+                                        >
+                                            {label} <span className="text-sm font-normal">{date.getDate()}일</span>
+                                        </button>
+                                    );
+                                });
+                            })()}
+                        </div>
                     </div>
 
                     <div className="flex flex-col xl:flex-row gap-8 items-start">

@@ -300,6 +300,16 @@ export const deleteStudyFileAsync = async () => {
     await saveStudyDataAsync(next);
 };
 
+export const mergeAnalyzedSchedules = async (schedules: Record<string, StudyPeriod[]>) => {
+  const data = await getStudyDataAsync();
+  if (!data) return;
+  Object.entries(schedules).forEach(([date, periods]) => {
+    if (periods.length > 0) data.schedules[date] = periods;
+  });
+  data.updatedAt = new Date().toISOString();
+  await saveStudyDataAsync(data);
+};
+
 export const getTodayScheduleAsync = async (): Promise<{ date: string, periods: StudyPeriod[] }> => {
     const data = await getStudyDataAsync();
     const dateStr = getKstDateString();
