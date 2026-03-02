@@ -11,30 +11,91 @@ interface DrawAppProps {
 
 type DrawMode = 'number' | 'name';
 
-// --- 3D Card Component ---
-const MysticalCard: React.FC<{ content: string; isRevealed: boolean }> = ({ content, isRevealed }) => {
+// --- Slot Machine Animation Component ---
+const SlotMachine: React.FC<{ names: string[]; duration: number }> = ({ names, duration }) => {
+    const [current, setCurrent] = useState(0);
+    useEffect(() => {
+        if (names.length === 0) return;
+        let speed = 50;
+        let elapsed = 0;
+        const tick = () => {
+            setCurrent(prev => (prev + 1) % names.length);
+            elapsed += speed;
+            if (elapsed < duration) {
+                speed = Math.min(speed + 8, 300);
+                setTimeout(tick, speed);
+            }
+        };
+        tick();
+    }, [names, duration]);
     return (
-        <div className="group w-64 h-96 [perspective:1000px]">
-            <div className={`relative w-full h-full transition-all duration-1000 [transform-style:preserve-3d] ${isRevealed ? '[transform:rotateY(180deg)]' : ''}`}>
-                {/* Front (Hidden state) */}
-                <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-indigo-900 to-purple-900 rounded-2xl border-4 border-indigo-400/50 shadow-[0_0_30px_rgba(79,70,229,0.5)] flex items-center justify-center [backface-visibility:hidden]">
-                    <div className="text-6xl animate-pulse">🔮</div>
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-30"></div>
-                </div>
+        <div className="text-6xl md:text-8xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.5)] animate-pulse text-center break-keep">
+            {names[current] || '?'}
+        </div>
+    );
+};
 
-                {/* Back (Revealed state) */}
-                <div className="absolute inset-0 w-full h-full bg-white rounded-2xl border-4 border-yellow-400 shadow-[0_0_50px_rgba(250,204,21,0.6)] flex items-center justify-center [transform:rotateY(180deg)] [backface-visibility:hidden] overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-b from-yellow-50 to-white"></div>
-                    <div className="relative z-10 text-center p-4">
-                        <div className="text-sm font-bold text-yellow-600 mb-2 uppercase tracking-widest">Selected</div>
-                        <div className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 break-keep leading-tight drop-shadow-sm">
-                            {content}
+// --- Confetti Burst Component ---
+const ConfettiBurst: React.FC = () => {
+    const colors = ['#FFD700', '#FF6B6B', '#4ECDC4', '#A78BFA', '#F472B6', '#34D399', '#60A5FA', '#FBBF24'];
+    return (
+        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+            {Array.from({ length: 80 }).map((_, i) => {
+                const color = colors[i % colors.length];
+                const left = Math.random() * 100;
+                const delay = Math.random() * 0.5;
+                const size = Math.random() * 10 + 5;
+                const rotation = Math.random() * 360;
+                return (
+                    <div
+                        key={i}
+                        className="absolute animate-confetti-fall"
+                        style={{
+                            left: `${left}%`,
+                            top: '-20px',
+                            width: `${size}px`,
+                            height: `${size * 0.6}px`,
+                            backgroundColor: color,
+                            borderRadius: '2px',
+                            transform: `rotate(${rotation}deg)`,
+                            animationDelay: `${delay}s`,
+                            animationDuration: `${2 + Math.random() * 2}s`,
+                        }}
+                    />
+                );
+            })}
+            <style>{`
+                @keyframes confetti-fall {
+                    0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
+                    100% { transform: translateY(100vh) rotate(720deg) scale(0.5); opacity: 0; }
+                }
+                .animate-confetti-fall { animation: confetti-fall linear forwards; }
+            `}</style>
+        </div>
+    );
+};
+
+// --- Winner Reveal Component ---
+const WinnerReveal: React.FC<{ name: string; index: number }> = ({ name, index }) => {
+    const [show, setShow] = useState(false);
+    useEffect(() => {
+        const timer = setTimeout(() => setShow(true), index * 200);
+        return () => clearTimeout(timer);
+    }, [index]);
+    return (
+        <div className={`transition-all duration-700 ${show ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+            <div className="relative bg-gradient-to-br from-yellow-400 via-amber-300 to-yellow-500 p-1 rounded-3xl shadow-[0_0_60px_rgba(250,204,21,0.6)]">
+                <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-[20px] px-12 py-10 text-center relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-40"></div>
+                    <div className="relative z-10">
+                        <div className="text-yellow-400 text-sm font-bold tracking-[0.3em] mb-3">SELECTED</div>
+                        <div className="text-5xl md:text-7xl font-black text-white break-keep leading-tight drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                            {name}
                         </div>
                     </div>
-                    {/* Confetti Effect inside card */}
                     <div className="absolute inset-0 pointer-events-none">
-                        {[...Array(10)].map((_, i) => (
-                            <div key={i} className="absolute w-2 h-2 bg-yellow-400 rounded-full animate-ping" style={{ top: `${Math.random()*100}%`, left: `${Math.random()*100}%`, animationDelay: `${i*0.1}s` }}></div>
+                        {Array.from({ length: 15 }).map((_, i) => (
+                            <div key={i} className="absolute w-1 h-1 bg-yellow-300 rounded-full animate-ping" style={{ top: `${Math.random()*100}%`, left: `${Math.random()*100}%`, animationDelay: `${i*0.15}s`, animationDuration: '1.5s' }} />
                         ))}
                     </div>
                 </div>
@@ -61,7 +122,9 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
   const [isPlaying, setIsPlaying] = useState(isTeacherMode ? (savedConfig?.isPlaying || false) : sharedState.isActive);
   const [pool, setPool] = useState<string[]>(savedConfig?.pool || []); 
   const [winners, setWinners] = useState<string[]>(isTeacherMode ? sharedState.result : []); 
-  const [isAnimating, setIsAnimating] = useState(false); 
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [slotNames, setSlotNames] = useState<string[]>([]); 
 
   // --- Student Sync State ---
   const [remoteResult, setRemoteResult] = useState<string[]>(sharedState.result);
@@ -69,11 +132,18 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
 
   // --- Effects ---
 
-  // Preload roster from DB on mount
+  // Preload roster from DB and auto-fill name list
   useEffect(() => {
-    if (isTeacherMode) {
-      studentService.fetchRosterFromDb().catch(() => {});
-    }
+    if (!isTeacherMode) return;
+    const loadRoster = async () => {
+      try { await studentService.fetchRosterFromDb(); } catch {}
+      const roster = drawService.getClassRoster();
+      if (roster.length > 0 && nameList.length === 0) {
+        setNameList(roster);
+        setNameInput(roster.join('\n'));
+      }
+    };
+    loadRoster();
   }, [isTeacherMode]);
 
   // Polling for Student Sync
@@ -154,11 +224,11 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
     const countToPick = Math.min(drawCount, pool.length);
     
     setIsAnimating(true);
-    setWinners([]); // Clear previous winner to trigger flip back
+    setWinners([]);
+    setShowConfetti(false);
+    setSlotNames([...pool].sort(() => Math.random() - 0.5));
 
-    // Animation Delay
     setTimeout(() => {
-        // Actual Draw
         const currentPool = [...pool];
         const newWinners: string[] = [];
 
@@ -175,7 +245,9 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
         setWinners(newWinners);
         setPool(currentPool);
         setIsAnimating(false);
-    }, 2500); // 2.5s suspense
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 4000);
+    }, 3000);
   };
 
   const handleResetPool = () => {
@@ -357,18 +429,21 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
             </button>
         )}
 
+        {/* Confetti */}
+        {showConfetti && <ConfettiBurst />}
+
         {/* Main Stage */}
         <div className="relative z-10 flex flex-col items-center justify-center w-full max-w-6xl">
             
             {/* Title / Status */}
             <div className="mb-12 text-center">
                 {currentAnimating ? (
-                    <h2 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-orange-500 animate-pulse drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]">
-                        누구일까요?
+                    <h2 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-orange-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]">
+                        두근두근... 누구일까요?
                     </h2>
                 ) : currentResult.length > 0 ? (
                     <h2 className="text-3xl md:text-5xl font-black text-white drop-shadow-lg flex items-center justify-center gap-3">
-                        <Sparkles className="text-yellow-400" /> 축하합니다! <Sparkles className="text-yellow-400" />
+                        <Sparkles className="text-yellow-400 animate-spin" /> 축하합니다! <Sparkles className="text-yellow-400 animate-spin" />
                     </h2>
                 ) : (
                     <h2 className="text-2xl md:text-4xl font-bold text-indigo-200 opacity-80">
@@ -377,21 +452,34 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
                 )}
             </div>
 
-            {/* Cards Container */}
-            <div className="flex flex-wrap justify-center gap-8 perspective-1000 min-h-[400px] items-center">
+            {/* Main Display Area */}
+            <div className="flex flex-wrap justify-center gap-8 min-h-[300px] items-center">
                 {currentAnimating ? (
-                    // While animating, show generic spinning card or mystery orb
-                    <div className="w-48 h-48 md:w-64 md:h-64 rounded-full bg-indigo-500/30 border-4 border-indigo-400/50 flex items-center justify-center animate-spin-slow shadow-[0_0_50px_rgba(99,102,241,0.6)] backdrop-blur-sm">
-                        <span className="text-6xl">🔮</span>
+                    <div className="flex flex-col items-center gap-8">
+                        <div className="relative">
+                            <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-violet-600 via-fuchsia-500 to-violet-600 blur-2xl opacity-60 animate-pulse" />
+                            <div className="relative bg-gradient-to-br from-slate-900/90 to-indigo-950/90 backdrop-blur-md border-2 border-white/20 rounded-3xl px-16 py-12 shadow-[0_0_80px_rgba(139,92,246,0.4)]">
+                                <SlotMachine names={slotNames} duration={2800} />
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                                <div key={i} className="w-3 h-3 bg-yellow-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                            ))}
+                        </div>
                     </div>
                 ) : currentResult.length > 0 ? (
-                    // Revealed Cards
-                    currentResult.map((res, idx) => (
-                        <MysticalCard key={idx} content={res} isRevealed={true} />
-                    ))
+                    <div className="flex flex-wrap justify-center gap-6">
+                        {currentResult.map((res, idx) => (
+                            <WinnerReveal key={`${res}-${idx}`} name={res} index={idx} />
+                        ))}
+                    </div>
                 ) : (
-                    // Idle State
-                    <div className="w-32 h-32 opacity-20 bg-white/10 rounded-full blur-xl animate-pulse"></div>
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="w-40 h-40 rounded-full bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border-2 border-white/10 flex items-center justify-center backdrop-blur-sm">
+                            <Wand2 size={64} className="text-indigo-300/50" />
+                        </div>
+                    </div>
                 )}
             </div>
 
