@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Home, Settings, Play, RotateCcw, Users, Hash, Dices, Sparkles, Wand2, RefreshCw } from 'lucide-react';
 import * as drawService from '../services/drawService';
+import * as studentService from '../services/studentService';
 
 interface DrawAppProps {
   onBack: () => void;
@@ -68,6 +69,13 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
 
   // --- Effects ---
 
+  // Preload roster from DB on mount
+  useEffect(() => {
+    if (isTeacherMode) {
+      studentService.fetchRosterFromDb().catch(() => {});
+    }
+  }, [isTeacherMode]);
+
   // Polling for Student Sync
   useEffect(() => {
     if (!isTeacherMode) {
@@ -105,7 +113,8 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
 
   // --- Handlers ---
 
-  const handleAddClassRoster = () => {
+  const handleAddClassRoster = async () => {
+    try { await studentService.fetchRosterFromDb(); } catch {}
     const roster = drawService.getClassRoster();
     setNameList(roster);
     setNameInput(roster.join('\n'));

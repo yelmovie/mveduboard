@@ -25,11 +25,12 @@ export const CouponApp: React.FC<CouponAppProps> = ({ onBack, isTeacherMode, stu
   const [search, setSearch] = useState('');
 
   useEffect(() => {
+    const init = async () => {
+      try { await studentService.fetchRosterFromDb(); } catch {}
+      setRoster(studentService.getRoster());
+    };
+    init();
     loadCoupons();
-    setRoster(studentService.getRoster());
-    
-    // Polling for real-time updates (sync between teacher and student)
-    // Faster polling (1000ms) for better UX responsiveness
     const interval = setInterval(loadCoupons, 1000);
     return () => clearInterval(interval);
   }, []);

@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Home, Users, Settings, Shuffle, Lock, Unlock, History, Save, RotateCcw, UserCheck, AlertTriangle, AlertCircle, Trash2, Download } from 'lucide-react';
+import { Home, Users, Settings, Shuffle, Lock, Unlock, History, Save, UserCheck, Trash2, Download, RefreshCw, Loader2 } from 'lucide-react';
 import * as roleService from '../services/roleService';
-import { RoleData, RoleAssignment } from '../types';
+import * as studentService from '../services/studentService';
+import { RoleData } from '../types';
 
 interface RoleAppProps {
   onBack: () => void;
@@ -16,28 +17,35 @@ export const RoleApp: React.FC<RoleAppProps> = ({ onBack, isTeacherMode }) => {
   const [activeTab, setActiveTab] = useState<Tab>('board');
   
   // Edit States
-  const [studentInput, setStudentInput] = useState('');
   const [roleInput, setRoleInput] = useState('');
   const [customRoleInputs, setCustomRoleInputs] = useState<Record<string, string>>({});
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [isTeacherMode]);
 
-  const loadData = () => {
+  const loadData = async () => {
+    try {
+      await studentService.fetchRosterFromDb();
+    } catch { /* fallback to localStorage */ }
     const d = roleService.getRoleData();
     setData(d);
-    setStudentInput(d.students.map(s => s.name).join('\n'));
     setRoleInput(d.roles.map(r => r.title).join('\n'));
   };
 
-  const handleSaveStudents = () => {
-      if (!data) return;
-      if (!confirm('학생 명단을 수정하시겠습니까?')) return;
-      const names = studentInput.split('\n').map(s => s.trim()).filter(s => s !== '');
-      const newData = roleService.updateStudents(data, names);
-      setData(newData);
-      alert('학생 명단이 저장되었습니다.');
+  const handleSyncFromRoster = async () => {
+    setIsSyncing(true);
+    try {
+      await studentService.fetchRosterFromDb();
+      const d = roleService.getRoleData();
+      setData(d);
+      alert(`학급 명부에서 ${d.students.length}명의 학생을 불러왔습니다.`);
+    } catch (err: any) {
+      alert(err.message || '명부를 불러오는데 실패했습니다.');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleSaveRoles = () => {
@@ -246,28 +254,79 @@ export const RoleApp: React.FC<RoleAppProps> = ({ onBack, isTeacherMode }) => {
             {/* 2. Students Tab */}
             {activeTab === 'students' && (
                 <div className="bg-white rounded-xl shadow-sm p-6 max-w-2xl mx-auto border border-gray-200 animate-fade-in-up">
-                    <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                        <Users size={20} /> 학생 명단 관리
-                    </h2>
-                    <p className="text-sm text-gray-500 mb-4">
-                        우리 반 학생들의 이름을 입력해주세요. 줄바꿈(Enter)으로 구분합니다.<br/>
-                        학생을 삭제하면 해당 학생의 현재 역할 배정도 취소됩니다.
-                    </p>
-                    <textarea 
-                        value={studentInput}
-                        onChange={e => setStudentInput(e.target.value)}
-                        className="w-full h-80 border rounded-xl p-4 text-gray-800 focus:ring-2 focus:ring-teal-500 mb-4 font-mono text-sm leading-relaxed"
-                        placeholder="김철수&#10;이영희&#10;박민수..."
-                    />
-                    <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-500">총 {studentInput.split('\n').filter(s=>s.trim()).length}명</span>
-                        <button 
-                            onClick={handleSaveStudents}
-                            className="bg-teal-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-teal-700"
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            <Users size={20} /> 학생 명단 관리
+                        </h2>
+                        <button
+                            onClick={handleSyncFromRoster}
+                            disabled={isSyncing}
+                            className="bg-teal-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-teal-700 flex items-center gap-2 disabled:bg-gray-400 text-sm"
                         >
-                            저장하기
+                            {isSyncing ? (
+                                <><Loader2 size={16} className="animate-spin" /> 불러오는 중...</>
+                            ) : (
+                                <><RefreshCw size={16} /> 학급 명부에서 불러오기</>
+                            )}
                         </button>
                     </div>
+                    <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-4">
+                        <p className="text-sm text-teal-800 font-bold mb-1">학급 명부 연동</p>
+                        <p className="text-xs text-teal-700">
+                            선생님 대시보드의 [학급관리 &gt; 명단 관리]에서 등록한 학생 명단을 자동으로 불러옵니다.<br/>
+                            명단을 수정하려면 [학급관리 &gt; 명단 관리]에서 변경 후 위의 "학급 명부에서 불러오기" 버튼을 눌러주세요.
+                        </p>
+                    </div>
+
+                    {data.students.length === 0 ? (
+                        <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                            <Users size={48} className="mx-auto mb-4 text-gray-300" />
+                            <p className="text-gray-500 font-bold mb-2">등록된 학생이 없습니다.</p>
+                            <p className="text-gray-400 text-sm mb-4">선생님 대시보드에서 학급 명부를 먼저 등록해주세요.</p>
+                            <button
+                                onClick={handleSyncFromRoster}
+                                disabled={isSyncing}
+                                className="bg-teal-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-teal-700 inline-flex items-center gap-2 disabled:bg-gray-400"
+                            >
+                                {isSyncing ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+                                학급 명부에서 불러오기
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="border rounded-xl overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50 border-b">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-gray-600 font-bold w-16">번호</th>
+                                        <th className="px-4 py-3 text-left text-gray-600 font-bold">이름</th>
+                                        <th className="px-4 py-3 text-left text-gray-600 font-bold">현재 역할</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {data.students.map((student, idx) => {
+                                        const assignment = data.currentAssignments.find(a => a.studentId === student.id);
+                                        const role = assignment?.roleId ? data.roles.find(r => r.id === assignment.roleId) : null;
+                                        return (
+                                            <tr key={student.id} className="hover:bg-gray-50">
+                                                <td className="px-4 py-3 text-gray-500 font-mono">{idx + 1}</td>
+                                                <td className="px-4 py-3 text-gray-800 font-bold">{student.name}</td>
+                                                <td className="px-4 py-3">
+                                                    {role ? (
+                                                        <span className="inline-block bg-teal-100 text-teal-700 px-2 py-1 rounded-full text-xs font-bold">{role.title}</span>
+                                                    ) : (
+                                                        <span className="text-gray-300 text-xs">미배정</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                            <div className="bg-gray-50 px-4 py-3 border-t text-xs text-gray-500 font-bold">
+                                총 {data.students.length}명
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

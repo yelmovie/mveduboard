@@ -113,6 +113,13 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
     }
   }, [student?.nickname]);
 
+  // Preload roster from DB
+  useEffect(() => {
+    if (isTeacherMode) {
+      studentService.fetchRosterFromDb().catch(() => {});
+    }
+  }, [isTeacherMode]);
+
   // Init
   useEffect(() => {
       if (isTeacherMode) {

@@ -37,10 +37,12 @@ export const MeetingApp: React.FC<MeetingAppProps> = ({ onBack, isTeacherMode, s
   const canFinalize = isTeacherMode || isExecutive;
 
   useEffect(() => {
+    const init = async () => {
+      try { await studentService.fetchRosterFromDb(); } catch {}
+      setRoster(studentService.getRoster());
+    };
+    init();
     loadData();
-    setRoster(studentService.getRoster());
-    
-    // Poll for live votes
     const interval = setInterval(loadData, 1000);
     return () => clearInterval(interval);
   }, []);

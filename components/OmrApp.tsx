@@ -209,6 +209,7 @@ export const OmrApp: React.FC<OmrAppProps> = ({ isTeacherMode, student }) => {
 
   useEffect(() => {
     const run = async () => {
+      try { await studentService.fetchRosterFromDb(); } catch {}
       const check = await checkOmrTables();
       if (!check.ok && check.error) {
         const { status, code, table, message } = check.error;

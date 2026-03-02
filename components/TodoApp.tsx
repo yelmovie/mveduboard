@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Home, Calendar, Plus, Check, CheckCircle2, Circle, Trash2, UserCheck, ShieldCheck, Lock, RotateCcw, AlertTriangle, ArrowRight, XCircle, Star } from 'lucide-react';
 import * as todoService from '../services/todoService';
+import * as studentService from '../services/studentService';
 import { TodoTask, TodoRecord, Participant, TodoStatus } from '../types';
 
 interface TodoAppProps {
@@ -31,7 +32,11 @@ export const TodoApp: React.FC<TodoAppProps> = ({ onBack, isTeacherMode, student
 
   // Load data
   useEffect(() => {
-    setRoster(todoService.getRoster());
+    const init = async () => {
+      try { await studentService.fetchRosterFromDb(); } catch {}
+      setRoster(todoService.getRoster());
+    };
+    init();
     loadData();
   }, [currentDate]);
 

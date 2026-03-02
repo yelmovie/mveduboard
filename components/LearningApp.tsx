@@ -29,11 +29,15 @@ export const LearningApp: React.FC<LearningAppProps> = ({ onBack, isTeacherMode,
   // Load Roster for Portfolio
   useEffect(() => {
       if (activeTab === 'portfolio' && isTeacherMode) {
-          const loadedRoster = studentService.getRoster();
-          setRoster(loadedRoster);
-          if (loadedRoster.length > 0 && !selectedStudentId) {
-              handleSelectStudent(loadedRoster[0].id);
-          }
+          const init = async () => {
+            try { await studentService.fetchRosterFromDb(); } catch {}
+            const loadedRoster = studentService.getRoster();
+            setRoster(loadedRoster);
+            if (loadedRoster.length > 0 && !selectedStudentId) {
+                handleSelectStudent(loadedRoster[0].id);
+            }
+          };
+          init();
       }
   }, [activeTab, isTeacherMode]);
 

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Home, RefreshCcw, CheckSquare, User, Award, Trophy, Star, Sparkles, Crown } from 'lucide-react';
 import * as pointService from '../services/pointService';
+import * as studentService from '../services/studentService';
 import { PointStudent } from '../types';
 
 interface PointAppProps {
@@ -17,7 +18,11 @@ export const PointApp: React.FC<PointAppProps> = ({ onBack, isTeacherMode }) => 
   const [rewardType, setRewardType] = useState<'good' | 'bad'>('good');
 
   useEffect(() => {
-    loadData();
+    const init = async () => {
+      try { await studentService.fetchRosterFromDb(); } catch {}
+      loadData();
+    };
+    init();
   }, []);
 
   const loadData = () => {
