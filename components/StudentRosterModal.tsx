@@ -28,6 +28,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
   const [draftStudents, setDraftStudents] = useState<TempStudent[]>([]);
   const [inputName, setInputName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<UploadRosterRow[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,6 +121,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
   };
 
   const handleSave = async () => {
+      if (saving) return;
       if (draftStudents.length === 0) {
         alert('저장할 학생이 없습니다.');
         return;
@@ -146,11 +148,14 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
         alert('학급 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
         return;
       }
+      setSaving(true);
       try {
         await studentService.saveRosterToDb(normalized, classId);
-      } catch (error) {
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : '알 수 없는 오류';
         console.error('[StudentRosterModal] save error', error);
-        alert('저장에 실패했습니다. 다시 시도해주세요.');
+        alert(`저장에 실패했습니다.\n${msg}`);
+        setSaving(false);
         return;
       }
       const roster: ClassStudent[] = normalized.map((s, idx) => ({
@@ -160,6 +165,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
         gender: s.gender,
       }));
       studentService.saveRoster(roster);
+      setSaving(false);
       alert(`학급 명부가 저장되었습니다. (성공 ${roster.length}건) 모든 앱에 반영됩니다.`);
       onClose();
   };
@@ -472,8 +478,8 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                     <button onClick={onClose} className="px-6 py-3 rounded-xl border border-gray-300 font-bold text-gray-600 hover:bg-gray-50">
                         취소
                     </button>
-                    <button onClick={handleSave} className="px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg flex items-center gap-2">
-                        <Save size={20} /> 저장 및 적용
+                    <button onClick={handleSave} disabled={saving} className="px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                        <Save size={20} /> {saving ? '저장 중...' : '저장 및 적용'}
                     </button>
                 </div>
             </div>

@@ -179,6 +179,21 @@ export const saveRosterToDb = async (students: ClassStudent[], classId: string) 
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
   if (!userId) throw new Error('세션을 확인할 수 없습니다. 다시 로그인해주세요.');
+
+  const { error: deleteError, count: deletedCount } = await supabase
+    .from('students')
+    .delete({ count: 'exact' })
+    .eq('class_id', classId)
+    .eq('created_by', userId);
+  if (deleteError) {
+    console.error('[studentService] delete failed', {
+      code: deleteError.code,
+      message: deleteError.message,
+    });
+    throw new Error(`삭제 실패: ${deleteError.message}`);
+  }
+  console.info(`[studentService] deleted ${deletedCount ?? '?'} rows before insert`);
+
   const payload = normalized.map((s, idx) => ({
     class_id: classId,
     name: s.name,
@@ -186,29 +201,13 @@ export const saveRosterToDb = async (students: ClassStudent[], classId: string) 
     gender: s.gender ?? null,
     created_by: userId,
   }));
-  const { error: deleteError } = await supabase
-    .from('students')
-    .delete()
-    .eq('class_id', classId)
-    .eq('created_by', userId);
-  if (deleteError) {
-    console.error('[studentService] saveRosterToDb delete error', {
-      code: deleteError.code,
-      message: deleteError.message,
-      details: deleteError.details,
-      hint: deleteError.hint,
+  const { error: insertError } = await supabase.from('students').insert(payload);
+  if (insertError) {
+    console.error('[studentService] insert failed', {
+      code: insertError.code,
+      message: insertError.message,
     });
-    throw deleteError;
-  }
-  const { error } = await supabase.from('students').insert(payload);
-  if (error) {
-    console.error('[studentService] saveRosterToDb error', {
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
-    throw error;
+    throw new Error(`저장 실패: ${insertError.message}`);
   }
   saveRoster(normalized);
   return true;
