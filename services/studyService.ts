@@ -308,3 +308,141 @@ export const getTodayScheduleAsync = async (): Promise<{ date: string, periods: 
     }
     return { date: dateStr, periods: data.schedules[dateStr] };
 };
+
+// =====================================================================
+// 월간교육계획 (monthly plan) — 파일 업로드/뷰어
+// =====================================================================
+
+export type MonthlyPlanData = {
+  id: string;
+  fileUrl: string;
+  fileType: 'pdf' | 'image';
+  fileStorage: 'local' | 'supabase';
+  filePath?: string;
+  updatedAt: string;
+};
+
+const MP_LS_KEY = 'edu_monthly_plan';
+const getMpKey = (classId?: string | null) => (classId ? `${MP_LS_KEY}_${classId}` : MP_LS_KEY);
+let suppressMonthlyPlanColumnError = false;
+
+const getMonthlyPlanLocal = (classId?: string | null): MonthlyPlanData | null => {
+  const key = getMpKey(classId);
+  const stored = localStorage.getItem(key);
+  if (stored) return JSON.parse(stored) as MonthlyPlanData;
+  if (classId) {
+    const legacy = localStorage.getItem(MP_LS_KEY);
+    if (legacy) { localStorage.setItem(key, legacy); return JSON.parse(legacy); }
+  }
+  return null;
+};
+
+const saveMonthlyPlanLocal = (data: MonthlyPlanData, classId?: string | null) => {
+  const key = getMpKey(classId);
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+    if (classId) localStorage.setItem(MP_LS_KEY, JSON.stringify(data));
+  } catch {
+    const fb = { ...data, fileUrl: '' };
+    try { localStorage.setItem(key, JSON.stringify(fb)); } catch { /* quota exceeded */ }
+  }
+};
+
+const ensureMonthlyPlanSignedUrl = async (data: MonthlyPlanData | null) => {
+  if (!data) return data;
+  if (!supabase || data.fileStorage !== 'supabase' || !data.filePath) return data;
+  const { data: signed, error } = await supabase
+    .storage.from(STUDY_BUCKET)
+    .createSignedUrl(data.filePath, 60 * 60 * 24 * 7);
+  if (error || !signed?.signedUrl) return data;
+  return { ...data, fileUrl: signed.signedUrl };
+};
+
+export const getMonthlyPlanAsync = async (): Promise<MonthlyPlanData | null> => {
+  const profile = await getCurrentUserProfile();
+  const classId = profile?.class_id ?? null;
+  const local = getMonthlyPlanLocal(classId);
+  if (!supabase || !classId) return ensureMonthlyPlanSignedUrl(local);
+  if (suppressMonthlyPlanColumnError) return ensureMonthlyPlanSignedUrl(local);
+
+  const { data, error } = await supabase
+    .from('classes')
+    .select('monthly_plan_data')
+    .eq('id', classId)
+    .maybeSingle();
+  if (error) {
+    if (error.message?.includes('monthly_plan_data')) suppressMonthlyPlanColumnError = true;
+    return ensureMonthlyPlanSignedUrl(local);
+  }
+  if (data?.monthly_plan_data) {
+    const remote = data.monthly_plan_data as MonthlyPlanData;
+    saveMonthlyPlanLocal(remote, classId);
+    return ensureMonthlyPlanSignedUrl(remote);
+  }
+  return ensureMonthlyPlanSignedUrl(local);
+};
+
+const saveMonthlyPlanToDb = async (mpData: MonthlyPlanData) => {
+  const profile = await getCurrentUserProfile();
+  const classId = profile?.class_id ?? null;
+  saveMonthlyPlanLocal(mpData, classId);
+  if (!supabase || !classId || profile?.role !== 'teacher') return;
+  if (suppressMonthlyPlanColumnError) return;
+  const { error } = await supabase
+    .from('classes')
+    .update({ monthly_plan_data: mpData })
+    .eq('id', classId);
+  if (error) {
+    if (error.message?.includes('monthly_plan_data')) suppressMonthlyPlanColumnError = true;
+    console.warn('[studyService] saveMonthlyPlanToDb error', error.message);
+  }
+};
+
+export const uploadMonthlyPlan = async (file: File): Promise<MonthlyPlanData> => {
+  const isPdf = file.type === 'application/pdf';
+  const baseData: MonthlyPlanData = {
+    id: generateUUID(),
+    fileUrl: '',
+    fileType: isPdf ? 'pdf' : 'image',
+    fileStorage: 'local',
+    updatedAt: new Date().toISOString(),
+  };
+  const profile = await getCurrentUserProfile();
+  const canUpload = !!supabase && !!profile?.class_id && !!profile?.school_id && profile.role === 'teacher';
+  if (canUpload) {
+    const ext = isPdf ? 'pdf' : 'png';
+    const filename = `monthly-${Date.now()}.${ext}`;
+    const path = `school/${profile.school_id}/class/${profile.class_id}/study/monthly/${filename}`;
+    const { error } = await supabase.storage.from(STUDY_BUCKET).upload(path, file, {
+      contentType: file.type,
+      upsert: true,
+    });
+    if (!error) {
+      const d: MonthlyPlanData = { ...baseData, fileStorage: 'supabase', filePath: path };
+      await saveMonthlyPlanToDb(d);
+      return (await ensureMonthlyPlanSignedUrl(d)) ?? d;
+    }
+  }
+  let base64 = await blobToBase64(file);
+  if (file.type.startsWith('image/')) base64 = await compressImage(base64, 720, 0.6);
+  const localData: MonthlyPlanData = { ...baseData, fileUrl: base64, fileStorage: 'local' };
+  await saveMonthlyPlanToDb(localData);
+  return localData;
+};
+
+export const deleteMonthlyPlanAsync = async () => {
+  const existing = await getMonthlyPlanAsync();
+  if (!existing) return;
+  if (supabase && existing.fileStorage === 'supabase' && existing.filePath) {
+    await supabase.storage.from(STUDY_BUCKET).remove([existing.filePath]);
+  }
+  const cleared: MonthlyPlanData = {
+    id: existing.id,
+    fileUrl: '',
+    fileType: 'image',
+    fileStorage: 'local',
+    filePath: undefined,
+    updatedAt: new Date().toISOString(),
+  };
+  await saveMonthlyPlanToDb(cleared);
+};

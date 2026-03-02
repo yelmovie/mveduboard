@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Home, BookOpen, Clock, CalendarRange, Upload, Edit3, Check, Trash2, Plus, FileText, X, Utensils, Download, CheckCircle2, XCircle } from 'lucide-react';
 import { Participant, WeeklyStudyData, StudyPeriod, BellScheduleItem } from '../types';
 import * as studyService from '../services/studyService';
-import { BoardApp } from '../BoardApp';
+import type { MonthlyPlanData } from '../services/studyService';
 import { LunchApp } from './LunchApp';
 
 interface PlannerAppProps {
@@ -42,6 +42,11 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
   const [editedBellSchedule, setEditedBellSchedule] = useState<BellScheduleItem[]>(DEFAULT_BELL_SCHEDULE);
   const [showUploadSuccess, setShowUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [monthlyPlan, setMonthlyPlan] = useState<MonthlyPlanData | null>(null);
+  const [isMonthlyProcessing, setIsMonthlyProcessing] = useState(false);
+  const [showMonthlySuccess, setShowMonthlySuccess] = useState(false);
+  const monthlyFileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -68,6 +73,9 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
     setTodayDate(date);
     setTodayPeriods(periods);
     setEditedPeriods(periods);
+
+    const mp = await studyService.getMonthlyPlanAsync();
+    setMonthlyPlan(mp);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,6 +99,37 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
     } finally {
         if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const handleMonthlyUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+      alert('이미지 또는 PDF 파일만 업로드 가능합니다.');
+      return;
+    }
+    setIsMonthlyProcessing(true);
+    try {
+      await studyService.uploadMonthlyPlan(file);
+      await loadData();
+      setIsMonthlyProcessing(false);
+      setShowMonthlySuccess(true);
+      setTimeout(() => setShowMonthlySuccess(false), 4000);
+      showToast('success', '학교 월간교육계획 파일이 등록되었습니다!');
+    } catch (err: any) {
+      setIsMonthlyProcessing(false);
+      showToast('error', err.message || '업로드에 실패했습니다.');
+    } finally {
+      if (monthlyFileRef.current) monthlyFileRef.current.value = '';
+    }
+  };
+
+  const handleDeleteMonthly = async () => {
+    const ok = window.confirm('학교 월간교육계획 파일을 삭제할까요?');
+    if (!ok) return;
+    await studyService.deleteMonthlyPlanAsync();
+    await loadData();
+    showToast('success', '학교 월간교육계획 파일이 삭제되었습니다.');
   };
 
   const handleDeleteGuide = async () => {
@@ -435,7 +474,70 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
                 </div>
             )}
 
-            {activeTab === 'monthly' && <div className="flex-1 bg-white animate-fade-in-up overflow-hidden h-full"><BoardApp boardId="schoolplan" onBack={() => {}} isTeacherMode={isTeacherMode} student={student} onLoginRequest={onLoginRequest} embedded={true} /></div>}
+            {activeTab === 'monthly' && (
+                <div className="flex-1 p-6 md:p-10 overflow-y-auto max-w-7xl mx-auto w-full animate-fade-in-up">
+                    <div className="flex flex-col gap-4 mb-8 md:flex-row md:items-center md:justify-between">
+                        <h2 className="text-3xl font-bold font-hand text-[#78350F]">학교 월간교육계획</h2>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            {isTeacherMode && (
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                    <input type="file" ref={monthlyFileRef} onChange={handleMonthlyUpload} className="hidden" accept="image/*,application/pdf" />
+                                    {showMonthlySuccess ? (
+                                        <button className="h-12 px-6 rounded-xl text-lg font-bold flex items-center gap-2 shadow-md cursor-default animate-pulse bg-[#6EE7B7] text-white">
+                                            <Check size={20} /> 업로드 완료
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => monthlyFileRef.current?.click()}
+                                            disabled={isMonthlyProcessing}
+                                            className="h-12 px-6 rounded-xl text-lg font-bold flex items-center gap-2 hover:bg-[#F43F5E] shadow-md transition-all bg-[#FDA4AF] text-white disabled:bg-gray-400"
+                                        >
+                                            {isMonthlyProcessing ? (
+                                                <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" /> 업로드 중...</>
+                                            ) : (
+                                                <><Upload size={20} /> 파일 업로드</>
+                                            )}
+                                        </button>
+                                    )}
+                                    {(monthlyPlan?.fileUrl || monthlyPlan?.filePath) && (
+                                        <button
+                                            onClick={handleDeleteMonthly}
+                                            className="h-12 px-6 rounded-xl text-lg font-bold flex items-center gap-2 bg-white text-[#F43F5E] border-2 border-[#FCA5A5] hover:bg-[#FFE4E6] shadow-sm"
+                                        >
+                                            <Trash2 size={18} /> 삭제
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                            {!isTeacherMode && monthlyPlan?.fileUrl && (
+                                <a
+                                    href={monthlyPlan.fileUrl}
+                                    download={`monthly-plan.${monthlyPlan.fileType === 'pdf' ? 'pdf' : 'png'}`}
+                                    className="h-12 px-6 rounded-xl bg-[#F3F4F6] text-[#374151] font-bold flex items-center justify-center gap-2 shadow-md hover:bg-[#E5E7EB] transition-colors w-full sm:w-auto"
+                                >
+                                    <Download size={20} /> 월간교육계획 다운로드
+                                </a>
+                            )}
+                        </div>
+                    </div>
+
+                    {monthlyPlan?.fileUrl ? (
+                        <div className="bg-gray-100 rounded-3xl overflow-hidden shadow-inner border border-gray-200 h-[75vh] flex items-center justify-center">
+                            {monthlyPlan.fileType === 'pdf' ? (
+                                <iframe src={monthlyPlan.fileUrl} className="w-full h-full" title="Monthly Plan PDF"></iframe>
+                            ) : (
+                                <img src={monthlyPlan.fileUrl} alt="Monthly Plan" className="max-w-full max-h-full object-contain" />
+                            )}
+                        </div>
+                    ) : (
+                        <div className="text-center py-32 bg-[#FEF9E7] rounded-3xl border-2 border-dashed border-[#FCD34D]">
+                            <CalendarRange size={80} className="mx-auto mb-6 text-[#FCD34D]" />
+                            <p className="text-[#92400E] text-xl font-bold">등록된 학교 월간교육계획이 없습니다.</p>
+                            {isTeacherMode && <p className="text-[#B45309] text-sm mt-2">위의 '파일 업로드' 버튼을 눌러 PDF나 이미지를 올려주세요.</p>}
+                        </div>
+                    )}
+                </div>
+            )}
             {activeTab === 'lunch' && <div className="flex-1 bg-white animate-fade-in-up overflow-hidden h-full"><LunchApp onBack={() => {}} isTeacherMode={isTeacherMode} embedded={true} /></div>}
         </main>
 
