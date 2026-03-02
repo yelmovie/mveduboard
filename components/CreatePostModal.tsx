@@ -37,7 +37,7 @@ import {
 interface CreatePostModalProps {
   layout: LayoutType;
   onClose: () => void;
-  onSubmit: (data: { title: string; body: string; event_date?: string, attachment_url?: string, attachment_urls?: string[], attachment_type?: 'image' | 'video', color: PostColor, math_page_range?: string }) => void;
+  onSubmit: (data: { title: string; body: string; event_date?: string, attachment_url?: string, attachment_urls?: string[], attachment_type?: 'image' | 'video' | 'file', color: PostColor, math_page_range?: string }) => void;
   boardId?: string; // To differentiate Math board
   isTeacherMode?: boolean;
 }
@@ -166,7 +166,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ layout, onClos
     
     let finalUrl = undefined;
     let finalUrls: string[] | undefined = undefined;
-    let finalType: 'image' | 'video' | undefined = undefined;
+    let finalType: 'image' | 'video' | 'file' | undefined = undefined;
 
     if (activeTab === 'image') {
         if (isAlbumBoard && imageUrls.length > 0) {

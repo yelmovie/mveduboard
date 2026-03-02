@@ -55,15 +55,20 @@ export const PostCard: React.FC<PostCardProps> = ({ post, role, currentUser, onS
         setResolvedAttachmentUrls([]);
         return;
       }
-      const signedUrls = await Promise.all(
-        rawUrls.map(async (url) => {
-          if (!url.startsWith('storage:')) return url;
-          const storagePath = url.replace('storage:', '');
-          return createSignedUrl(storagePath, 60);
-        })
-      );
-      setResolvedAttachmentUrls(signedUrls);
-      setResolvedAttachmentUrl(signedUrls[0] || null);
+      try {
+        const results = await Promise.all(
+          rawUrls.map(async (url) => {
+            if (!url.startsWith('storage:')) return url;
+            const storagePath = url.replace('storage:', '');
+            return createSignedUrl(storagePath);
+          })
+        );
+        const validUrls = results.filter((u): u is string => !!u);
+        setResolvedAttachmentUrls(validUrls);
+        setResolvedAttachmentUrl(validUrls[0] || null);
+      } catch (err) {
+        console.error('[PostCard] attachment resolve error:', err);
+      }
     };
     resolve();
   }, [post.attachment_url, post.attachment_urls]);

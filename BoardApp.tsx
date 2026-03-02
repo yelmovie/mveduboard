@@ -71,7 +71,7 @@ export const BoardApp: React.FC<BoardAppProps> = ({
 
   // --- Handlers ---
 
-  const handleCreatePost = async (data: { title: string; body: string; event_date?: string, attachment_url?: string, attachment_type?: 'image' | 'video', color: PostColor }) => {
+  const handleCreatePost = async (data: { title: string; body: string; event_date?: string, attachment_url?: string, attachment_urls?: string[], attachment_type?: 'image' | 'video' | 'file', color: PostColor, math_page_range?: string }) => {
     if (!board) return;
     
     // Safety check: if role is viewer, shouldn't be here
@@ -94,15 +94,17 @@ export const BoardApp: React.FC<BoardAppProps> = ({
     const authorName = role === 'teacher' ? '선생님' : (student?.nickname || '익명');
 
     await api.createPost({
-        board_id: boardId, // Use the specific board ID
+        board_id: boardId,
         author_name: authorName,
         author_participant_id: authorId,
         title: data.title,
         body: data.body,
         event_date: data.event_date,
         attachment_url: data.attachment_url,
+        attachment_urls: data.attachment_urls,
         attachment_type: data.attachment_type,
-        color: data.color, 
+        color: data.color,
+        math_page_range: data.math_page_range,
     }, role === 'teacher');
 
     setShowCreateModal(false);

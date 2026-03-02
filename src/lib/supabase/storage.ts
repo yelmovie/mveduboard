@@ -117,9 +117,16 @@ export const uploadFileWithoutQuota = async ({
   return { status: 'uploaded' as const, path };
 };
 
-export const createSignedUrl = async (path: string, expiresSeconds = 60) => {
+export const createSignedUrl = async (path: string, _expiresSeconds = 3600) => {
   if (!supabase) return null;
-  const { data, error } = await supabase.storage.from(BUCKET_NAME).createSignedUrl(path, expiresSeconds);
-  if (error) return null;
+
+  const { data: publicData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(path);
+  if (publicData?.publicUrl) return publicData.publicUrl;
+
+  const { data, error } = await supabase.storage.from(BUCKET_NAME).createSignedUrl(path, _expiresSeconds);
+  if (error) {
+    console.error('[storage] createSignedUrl error:', error.message);
+    return null;
+  }
   return data?.signedUrl || null;
 };
