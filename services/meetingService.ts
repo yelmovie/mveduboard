@@ -73,3 +73,19 @@ export const deleteAgenda = (id: string) => {
   const updated = agendas.filter(a => a.id !== id);
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
 };
+
+export const setSecretary = (agendaId: string, secretaryId: string, secretaryName: string) => {
+  const agendas = getAgendas();
+  const updated = agendas.map(a =>
+    a.id === agendaId ? { ...a, secretaryId, secretaryName } : a
+  );
+  localStorage.setItem(LS_KEY, JSON.stringify(updated));
+};
+
+export const updateNotes = (agendaId: string, notes: string) => {
+  const agendas = getAgendas();
+  const updated = agendas.map(a =>
+    a.id === agendaId ? { ...a, notes } : a
+  );
+  localStorage.setItem(LS_KEY, JSON.stringify(updated));
+};

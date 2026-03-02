@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { Home, MessageSquare, ThumbsUp, Plus, Trash2, ArrowRight, CheckCircle2, XCircle, PieChart, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Home, MessageSquare, ThumbsUp, Plus, Trash2, ArrowRight, CheckCircle2, XCircle, PieChart, Users, ChevronDown, ChevronUp, PenLine, Eye } from 'lucide-react';
 import * as meetingService from '../services/meetingService';
 import * as studentService from '../services/studentService';
 import { Agenda, AgendaStatus, Participant, ClassStudent } from '../types';
@@ -11,6 +11,198 @@ interface MeetingAppProps {
   student: Participant | null;
   onLoginRequest: () => void;
 }
+
+// --- Discussing Section with Secretary + Notes ---
+const DiscussingSection: React.FC<{
+  item: Agenda;
+  roster: ClassStudent[];
+  isTeacherMode: boolean;
+  currentUserId: string | null;
+  rosterStudent: ClassStudent | null | undefined;
+  myVote: string | null;
+  agreeCount: number;
+  disagreeCount: number;
+  agreeNames: string[];
+  disagreeNames: string[];
+  missingStudents: ClassStudent[];
+  totalVotes: number;
+  expandedVoteId: string | null;
+  setExpandedVoteId: (id: string | null) => void;
+  canFinalize: boolean;
+  onVote: (id: string, type: 'agree' | 'disagree') => void;
+  onMove: (id: string, status: AgendaStatus, result?: string) => void;
+  onLoginRequest: () => void;
+  loadData: () => void;
+}> = ({
+  item, roster, isTeacherMode, currentUserId, rosterStudent,
+  myVote, agreeCount, disagreeCount, agreeNames, disagreeNames,
+  missingStudents, totalVotes, expandedVoteId, setExpandedVoteId,
+  canFinalize, onVote, onMove, onLoginRequest, loadData,
+}) => {
+  const [localNotes, setLocalNotes] = useState(item.notes || '');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSecretary = !!(
+    (currentUserId && item.secretaryId === currentUserId) ||
+    (isTeacherMode && item.secretaryId === 'teacher')
+  );
+
+  useEffect(() => {
+    if (!isSecretary) {
+      setLocalNotes(item.notes || '');
+    }
+  }, [item.notes, isSecretary]);
+
+  const handleNotesChange = (value: string) => {
+    setLocalNotes(value);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      meetingService.updateNotes(item.id, value);
+      loadData();
+    }, 300);
+  };
+
+  const handleSetSecretary = (studentId: string) => {
+    const s = roster.find(r => r.id === studentId);
+    if (s) {
+      meetingService.setSecretary(item.id, s.id, s.name);
+      loadData();
+    }
+  };
+
+  const handleSetTeacherSecretary = () => {
+    meetingService.setSecretary(item.id, 'teacher', '선생님');
+    loadData();
+  };
+
+  return (
+    <div className="pt-2 border-t border-gray-50 space-y-3">
+      {/* Secretary Assignment (Teacher only) */}
+      {isTeacherMode && (
+        <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-blue-700 flex items-center gap-1">
+              <PenLine size={14} /> 서기 지정
+            </span>
+            {item.secretaryName && (
+              <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full font-bold">
+                현재: {item.secretaryName}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value === '__teacher__') handleSetTeacherSecretary();
+                else if (e.target.value) handleSetSecretary(e.target.value);
+              }}
+              className="flex-1 text-sm border border-blue-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-400"
+            >
+              <option value="">학생 선택...</option>
+              <option value="__teacher__">선생님 (직접 작성)</option>
+              {roster.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Notes Area */}
+      {item.secretaryId ? (
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          <div className="bg-gray-50 px-3 py-2 border-b border-gray-200 flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-600 flex items-center gap-1">
+              {isSecretary ? <><PenLine size={13} className="text-blue-500" /> 서기 기록 (작성 중)</> : <><Eye size={13} className="text-gray-400" /> 서기 기록 (읽기 전용)</>}
+            </span>
+            <span className="text-xs text-gray-400">서기: {item.secretaryName}</span>
+          </div>
+          {isSecretary ? (
+            <textarea
+              value={localNotes}
+              onChange={e => handleNotesChange(e.target.value)}
+              className="w-full p-3 text-sm text-gray-800 resize-none focus:outline-none min-h-[120px] leading-relaxed"
+              placeholder="토의 내용을 정리해주세요...&#10;&#10;예:&#10;- 김철수: 체육시간에 피구를 하자고 제안&#10;- 이영희: 줄넘기가 더 좋겠다고 반대 의견"
+            />
+          ) : (
+            <div className="p-3 text-sm text-gray-700 whitespace-pre-wrap min-h-[80px] leading-relaxed">
+              {item.notes ? item.notes : <span className="text-gray-300">서기가 아직 기록을 시작하지 않았습니다.</span>}
+            </div>
+          )}
+        </div>
+      ) : (
+        !isTeacherMode && (
+          <div className="bg-gray-50 rounded-xl p-3 text-center text-xs text-gray-400 border border-dashed border-gray-200">
+            선생님이 서기를 지정하면 토의 기록이 여기에 나타납니다.
+          </div>
+        )
+      )}
+
+      {/* Vote Buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => onVote(item.id, 'agree')}
+          className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-1 transition-all ${myVote === 'agree' ? 'bg-green-500 text-white shadow-md' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+        >
+          <CheckCircle2 size={16} /> 찬성 ({agreeCount})
+        </button>
+        <button
+          onClick={() => onVote(item.id, 'disagree')}
+          className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-1 transition-all ${myVote === 'disagree' ? 'bg-red-500 text-white shadow-md' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
+        >
+          <XCircle size={16} /> 반대 ({disagreeCount})
+        </button>
+      </div>
+
+      <button
+        onClick={() => setExpandedVoteId(expandedVoteId === item.id ? null : item.id)}
+        className="w-full flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-gray-600 py-1"
+      >
+        <Users size={12} /> 투표 현황 {expandedVoteId === item.id ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
+      </button>
+
+      {expandedVoteId === item.id && (
+        <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-2 border border-gray-100">
+          <div>
+            <span className="font-bold text-green-600 block mb-1">찬성 ({agreeCount}명)</span>
+            <div className="flex flex-wrap gap-1">
+              {agreeNames.length > 0 ? agreeNames.map((name, i) => (
+                <span key={i} className="bg-white px-1.5 py-0.5 rounded border border-gray-200">{name}</span>
+              )) : <span className="text-gray-400">-</span>}
+            </div>
+          </div>
+          <div>
+            <span className="font-bold text-red-600 block mb-1">반대 ({disagreeCount}명)</span>
+            <div className="flex flex-wrap gap-1">
+              {disagreeNames.length > 0 ? disagreeNames.map((name, i) => (
+                <span key={i} className="bg-white px-1.5 py-0.5 rounded border border-gray-200">{name}</span>
+              )) : <span className="text-gray-400">-</span>}
+            </div>
+          </div>
+          <div>
+            <span className="font-bold text-gray-500 block mb-1">미참여 ({missingStudents.length}명)</span>
+            <div className="flex flex-wrap gap-1">
+              {missingStudents.length > 0 ? missingStudents.map((s, i) => (
+                <span key={i} className="bg-white px-1.5 py-0.5 rounded border border-gray-200 text-gray-400">{s.name}</span>
+              )) : <span className="text-gray-400">모두 투표 완료!</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {canFinalize && (
+        <div className="flex justify-end pt-2 border-t border-dashed border-gray-200">
+          <button onClick={() => {
+            const res = prompt('결정된 사항을 입력해주세요 (예: 찬성 다수로 가결):');
+            if (res) onMove(item.id, 'decided', res);
+          }} className="text-xs bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1 hover:bg-indigo-700 shadow-sm transition-all">
+            결정 완료 <ArrowRight size={12}/>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const MeetingApp: React.FC<MeetingAppProps> = ({ onBack, isTeacherMode, student, onLoginRequest }) => {
   const [agendas, setAgendas] = useState<Agenda[]>([]);
@@ -177,71 +369,29 @@ export const MeetingApp: React.FC<MeetingAppProps> = ({ onBack, isTeacherMode, s
                             </div>
                         )}
 
-                        {/* 2. Discussing: Vote Buttons & Detailed Status */}
+                        {/* 2. Discussing: Secretary Notes + Vote */}
                         {status === 'discussing' && (
-                            <div className="pt-2 border-t border-gray-50">
-                                <div className="flex gap-2 mb-2">
-                                    <button 
-                                        onClick={() => handleVote(item.id, 'agree')}
-                                        className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-1 transition-all ${myVote === 'agree' ? 'bg-green-500 text-white shadow-md' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
-                                    >
-                                        <CheckCircle2 size={16} /> 찬성 ({agreeCount})
-                                    </button>
-                                    <button 
-                                        onClick={() => handleVote(item.id, 'disagree')}
-                                        className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-1 transition-all ${myVote === 'disagree' ? 'bg-red-500 text-white shadow-md' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
-                                    >
-                                        <XCircle size={16} /> 반대 ({disagreeCount})
-                                    </button>
-                                </div>
-
-                                <button 
-                                    onClick={() => setExpandedVoteId(expandedVoteId === item.id ? null : item.id)}
-                                    className="w-full flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-gray-600 py-1"
-                                >
-                                    <Users size={12} /> 투표 현황 {expandedVoteId === item.id ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
-                                </button>
-
-                                {expandedVoteId === item.id && (
-                                    <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-2 mt-1 border border-gray-100">
-                                        <div>
-                                            <span className="font-bold text-green-600 block mb-1">찬성 ({agreeCount}명)</span>
-                                            <div className="flex flex-wrap gap-1">
-                                                {agreeNames.length > 0 ? agreeNames.map((name, i) => (
-                                                    <span key={i} className="bg-white px-1.5 py-0.5 rounded border border-gray-200">{name}</span>
-                                                )) : <span className="text-gray-400">-</span>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="font-bold text-red-600 block mb-1">반대 ({disagreeCount}명)</span>
-                                            <div className="flex flex-wrap gap-1">
-                                                {disagreeNames.length > 0 ? disagreeNames.map((name, i) => (
-                                                    <span key={i} className="bg-white px-1.5 py-0.5 rounded border border-gray-200">{name}</span>
-                                                )) : <span className="text-gray-400">-</span>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="font-bold text-gray-500 block mb-1">미참여 ({missingStudents.length}명)</span>
-                                            <div className="flex flex-wrap gap-1">
-                                                {missingStudents.length > 0 ? missingStudents.map((s, i) => (
-                                                    <span key={i} className="bg-white px-1.5 py-0.5 rounded border border-gray-200 text-gray-400">{s.name}</span>
-                                                )) : <span className="text-gray-400">모두 투표 완료!</span>}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                {canFinalize && (
-                                    <div className="flex justify-end mt-2 pt-2 border-t border-dashed border-gray-200">
-                                        <button onClick={() => {
-                                            const res = prompt('결정된 사항을 입력해주세요 (예: 찬성 다수로 가결):');
-                                            if(res) handleMove(item.id, 'decided', res);
-                                        }} className="text-xs bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-1 hover:bg-indigo-700 shadow-sm transition-all">
-                                            결정 완료 <ArrowRight size={12}/>
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
+                            <DiscussingSection
+                                item={item}
+                                roster={roster}
+                                isTeacherMode={isTeacherMode}
+                                currentUserId={currentUserId}
+                                rosterStudent={rosterStudent}
+                                myVote={myVote}
+                                agreeCount={agreeCount}
+                                disagreeCount={disagreeCount}
+                                agreeNames={agreeNames}
+                                disagreeNames={disagreeNames}
+                                missingStudents={missingStudents}
+                                totalVotes={totalVotes}
+                                expandedVoteId={expandedVoteId}
+                                setExpandedVoteId={setExpandedVoteId}
+                                canFinalize={canFinalize}
+                                onVote={handleVote}
+                                onMove={handleMove}
+                                onLoginRequest={onLoginRequest}
+                                loadData={loadData}
+                            />
                         )}
 
                         {/* 3. Decided: Results */}

@@ -373,11 +373,14 @@ export interface Agenda {
   title: string;
   description: string;
   author: string;
-  likes: number; // Used for "Proposed" stage mainly
+  likes: number;
   status: AgendaStatus;
   createdAt: string;
-  result?: string; // Final decision
-  votes?: Record<string, 'agree' | 'disagree'>; // Key: studentId/teacherId, Value: vote type
+  result?: string;
+  votes?: Record<string, 'agree' | 'disagree'>;
+  secretaryId?: string;
+  secretaryName?: string;
+  notes?: string;
 }
 
 // --- 1인 1역 (Role Assignment) Types ---
