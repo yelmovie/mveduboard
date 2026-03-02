@@ -348,23 +348,33 @@ export const RoleApp: React.FC<RoleAppProps> = ({ onBack, isTeacherMode }) => {
                         배정할 역할들을 입력해주세요. 줄바꿈(Enter)으로 구분합니다.<br/>
                         학생 수보다 역할이 적으면 일부 역할이 중복 배정될 수 있습니다.
                     </p>
-                    <div className="relative">
-                        <div className="absolute left-0 top-0 bottom-0 w-10 bg-gray-50 border-r border-gray-200 rounded-l-xl pointer-events-none overflow-hidden">
-                            <div className="pt-4 text-right pr-2 text-xs text-gray-400 font-mono leading-relaxed select-none" style={{ lineHeight: '1.625rem' }}>
-                                {roleInput.split('\n').map((_, i) => (
-                                    <div key={i}>{i + 1}</div>
-                                ))}
+                    <textarea 
+                        value={roleInput}
+                        onChange={e => setRoleInput(e.target.value)}
+                        className="w-full h-48 border rounded-xl p-4 text-gray-800 focus:ring-2 focus:ring-teal-500 mb-4 font-mono text-sm leading-relaxed"
+                        placeholder="칠판 지우기&#10;우유 당번&#10;줄 세우기..."
+                    />
+                    {(() => {
+                        const parsed = roleInput.split('\n').map(s => s.trim()).filter(s => s !== '');
+                        return parsed.length > 0 ? (
+                            <div className="border rounded-xl overflow-hidden mb-4">
+                                <div className="bg-gray-50 px-4 py-2 border-b text-xs font-bold text-gray-600 flex justify-between">
+                                    <span>역할 미리보기</span>
+                                    <span className="text-teal-600">총 {parsed.length}개</span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-0 max-h-48 overflow-y-auto">
+                                    {parsed.map((role, i) => (
+                                        <div key={i} className="flex items-center gap-2 px-3 py-2 border-b border-r border-gray-100 text-sm">
+                                            <span className="text-xs font-bold text-teal-600 bg-teal-50 w-6 h-6 rounded-full flex items-center justify-center shrink-0">{i + 1}</span>
+                                            <span className="text-gray-700 truncate">{role}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                        <textarea 
-                            value={roleInput}
-                            onChange={e => setRoleInput(e.target.value)}
-                            className="w-full h-80 border rounded-xl pl-12 pr-4 py-4 text-gray-800 focus:ring-2 focus:ring-teal-500 font-mono text-sm leading-relaxed"
-                            placeholder="칠판 지우기&#10;우유 당번&#10;줄 세우기..."
-                        />
-                    </div>
-                    <div className="flex justify-between items-center mt-4">
-                        <span className="text-xs text-gray-500">⚙ {roleInput.split('\n').filter(s=>s.trim()).length}개</span>
+                        ) : null;
+                    })()}
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500">총 {roleInput.split('\n').filter(s=>s.trim()).length}개</span>
                         <button 
                             onClick={handleSaveRoles}
                             className="bg-teal-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-teal-700"
