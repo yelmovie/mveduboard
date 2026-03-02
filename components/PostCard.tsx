@@ -30,8 +30,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, role, currentUser, onS
   const [editTitle, setEditTitle] = useState(post.title);
   const [editBody, setEditBody] = useState(post.body);
 
-  const isTeacherPost = post.author_name === '선생님';
-  const canManagePost = role === 'teacher' && isTeacherPost;
+  const canManagePost = role === 'teacher';
 
   useEffect(() => {
     if (showComments) {

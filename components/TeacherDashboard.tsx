@@ -166,6 +166,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
     const allMessages = messageService.getAllMessages();
     const unread = allMessages.filter(m => m.sender === 'student' && !m.isRead).length;
 
+    try { await studentService.fetchRosterFromDb(); } catch {}
     const roster = studentService.getRoster();
 
     setStats({

@@ -223,6 +223,9 @@ export const fetchRosterFromDb = async (): Promise<ClassStudent[]> => {
   const classId = profile?.class_id;
   if (!classId) return getRoster();
 
+  // classId 캐시에 반영하여 saveRoster/getRoster 키 일관성 확보
+  cachedClassId = classId;
+
   const { data, error } = await supabase
     .from('students')
     .select('id, name, student_no, gender')
