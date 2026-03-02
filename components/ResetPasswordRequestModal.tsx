@@ -28,8 +28,8 @@ export const ResetPasswordRequestModal: React.FC<ResetPasswordRequestModalProps>
       setIsError(!result.ok);
       if (result.ok) setEmail('');
     } catch {
-      setMessage('등록된 이메일이 있다면 재설정 메일을 보냈습니다. 메일함을 확인해주세요.');
-      setIsError(false);
+      setMessage('메일 전송에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      setIsError(true);
     } finally {
       setLoading(false);
     }

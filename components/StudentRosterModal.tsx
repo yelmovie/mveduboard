@@ -1,23 +1,35 @@
-
-import React, { useEffect, useState } from 'react';
-import { X, UserPlus, Save, Trash2, RotateCcw, Users, Download } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, UserPlus, Save, Trash2, RotateCcw, Users, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { supabase } from '../src/lib/supabase/client';
 import * as studentService from '../services/studentService';
 import { ClassStudent } from '../types';
 import { getCurrentUserProfile, getSession } from '../src/lib/supabase/auth';
 import { generateUUID } from '../src/utils/uuid';
+import {
+  parseCsvText,
+  parseXlsxToRows,
+  validateRosterRows,
+  downloadSampleCsv,
+  PREVIEW_MAX,
+  ROSTER_CSV_HEADERS,
+  ROSTER_CSV_SAMPLE_ROWS,
+  ROSTER_CSV_FILENAME,
+  type UploadRosterRow,
+} from '../utils/rosterUpload';
 
 interface StudentRosterModalProps {
   onClose: () => void;
 }
 
 export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose }) => {
-  type TempStudent = { id: string; name: string; number?: number; gender?: 'male' | 'female'; executiveRole?: 'president' | 'vice' };
+  type TempStudent = { id: string; name: string; number?: number; gender?: 'male' | 'female' };
   const MAX_STUDENTS = 30;
   const [draftStudents, setDraftStudents] = useState<TempStudent[]>([]);
   const [inputName, setInputName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [uploadPreview, setUploadPreview] = useState<UploadRosterRow[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -56,7 +68,6 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
           name: s.name,
           number: s.student_no ?? undefined,
           gender: s.gender === 'male' || s.gender === 'female' ? s.gender : undefined,
-          executiveRole: undefined,
         }));
         setDraftStudents(studentService.normalizeRoster(mapped));
       } finally {
@@ -91,7 +102,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
     setDraftStudents(prev => prev.filter(s => s.id !== id));
   };
 
-  const handleUpdate = (id: string, field: 'name' | 'number' | 'gender' | 'executiveRole', value: string) => {
+  const handleUpdate = (id: string, field: 'name' | 'number' | 'gender', value: string) => {
       const newStudents = draftStudents.map(s => {
           if (s.id === id) {
               if (field === 'number') {
@@ -101,20 +112,10 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
               if (field === 'gender') {
                 return { ...s, gender: value === 'male' || value === 'female' ? value : undefined };
               }
-              if (field === 'executiveRole') {
-                return { ...s, executiveRole: value === 'president' || value === 'vice' ? value : undefined };
-              }
               return { ...s, name: value };
           }
           return s;
       });
-      if (field === 'executiveRole' && (value === 'president' || value === 'vice')) {
-        const updated = newStudents.map((s) =>
-          s.id !== id && s.executiveRole === value ? { ...s, executiveRole: undefined } : s
-        );
-        setDraftStudents(updated);
-        return;
-      }
       setDraftStudents(newStudents);
   };
 
@@ -138,12 +139,6 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
         return;
       }
       const normalized = studentService.normalizeRoster(draftStudents);
-      const presidentCount = normalized.filter((s) => s.executiveRole === 'president').length;
-      const viceCount = normalized.filter((s) => s.executiveRole === 'vice').length;
-      if (presidentCount > 1 || viceCount > 1) {
-        alert('회장/부회장은 각각 1명만 지정할 수 있습니다.');
-        return;
-      }
       setDraftStudents(normalized);
       const profile = await getCurrentUserProfile();
       const classId = profile?.class_id;
@@ -152,14 +147,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
         return;
       }
       try {
-        const payload = normalized.map((s, idx) => ({
-          class_id: classId,
-          name: s.name,
-          student_no: s.number ?? idx + 1,
-          gender: s.gender ?? null,
-        }));
         await studentService.saveRosterToDb(normalized, classId);
-        console.log('[StudentRosterModal] save payload', payload);
       } catch (error) {
         console.error('[StudentRosterModal] save error', error);
         alert('저장에 실패했습니다. 다시 시도해주세요.');
@@ -170,10 +158,9 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
         name: s.name,
         number: s.number ?? idx + 1,
         gender: s.gender,
-        executiveRole: s.executiveRole,
       }));
       studentService.saveRoster(roster);
-      alert('학급 명부가 저장되었습니다. 모든 앱에 반영됩니다.');
+      alert(`학급 명부가 저장되었습니다. (성공 ${roster.length}건) 모든 앱에 반영됩니다.`);
       onClose();
   };
 
@@ -208,6 +195,104 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
     doc.save('class_roster.pdf');
   };
 
+  /** 클릭 시 클라이언트에서 CSV 생성 후 다운로드 (네트워크/Storage 없음). 회귀: 이 버튼 클릭 시 class_roster_template.csv가 내려와야 함. */
+  const handleSampleDownload = () => {
+    try {
+      downloadSampleCsv(ROSTER_CSV_HEADERS, ROSTER_CSV_SAMPLE_ROWS, ROSTER_CSV_FILENAME);
+    } catch {
+      try {
+        downloadSampleCsv(
+          ['number', 'name', 'gender', 'note'],
+          [{ number: '1', name: '예시', gender: '남', note: '' }],
+          ROSTER_CSV_FILENAME
+        );
+      } catch {
+        alert('샘플 파일 다운로드에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      }
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const ext = (file.name.split('.').pop() ?? '').toLowerCase();
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const content = reader.result;
+        let rows: string[][];
+        if (ext === 'csv' || file.name.endsWith('.csv')) {
+          rows = parseCsvText(typeof content === 'string' ? content : new TextDecoder().decode(content as ArrayBuffer));
+        } else if (ext === 'xlsx' || ext === 'xls') {
+          rows = parseXlsxToRows(content as ArrayBuffer);
+        } else {
+          alert('CSV 또는 엑셀(.xlsx, .xls) 파일만 업로드할 수 있습니다.');
+          return;
+        }
+        if (rows.length < 2) {
+          alert('헤더와 데이터 행이 있어야 합니다. 샘플을 참고해 주세요.');
+          return;
+        }
+        const validated = validateRosterRows(rows);
+        setUploadPreview(validated);
+      } catch (err) {
+        console.error('[StudentRosterModal] upload parse error', err);
+        alert('파일을 읽는 중 오류가 났습니다. 형식을 확인해 주세요.');
+      }
+    };
+    if (ext === 'csv' || file.name.endsWith('.csv')) {
+      reader.readAsText(file, 'UTF-8');
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
+  const handleMergeUpload = () => {
+    if (!uploadPreview) return;
+    const valid = uploadPreview.filter((r) => !r.error);
+    if (valid.length === 0) {
+      alert('반영할 유효한 행이 없습니다. 오류를 수정한 뒤 다시 업로드해 주세요.');
+      return;
+    }
+    const byNumber = new Map(draftStudents.map((s) => [s.number ?? 0, s]));
+    valid.forEach((r) => {
+      const existing = byNumber.get(r.number);
+      if (existing) {
+        byNumber.set(r.number, { ...existing, name: r.name, gender: r.gender ?? undefined });
+      } else {
+        byNumber.set(r.number, { id: generateUUID(), name: r.name, number: r.number, gender: r.gender ?? undefined });
+      }
+    });
+    const merged = Array.from(byNumber.values())
+      .filter((s) => s.number != null && s.number >= 1 && s.number <= MAX_STUDENTS)
+      .sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
+    if (merged.length > MAX_STUDENTS) {
+      alert(`최대 ${MAX_STUDENTS}명까지입니다. 처음 ${MAX_STUDENTS}명만 반영됩니다.`);
+      setDraftStudents(merged.slice(0, MAX_STUDENTS));
+    } else {
+      setDraftStudents(merged);
+    }
+    setUploadPreview(null);
+  };
+
+  const handleDownloadErrorReport = () => {
+    if (!uploadPreview) return;
+    const errors = uploadPreview.filter((r) => r.error);
+    if (errors.length === 0) return;
+    const header = '행,번호,이름,오류 사유\n';
+    const body = errors
+      .map((r) => `${r.rowIndex},${r.number},"${(r.name || '').replace(/"/g, '""')}",${r.error ?? ''}`)
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + header + body], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'roster_upload_errors.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -228,14 +313,13 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">번호</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-600">이름</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">성별</th>
-                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-28">임원</th>
                             <th className="py-3 px-4 text-center text-sm font-bold text-gray-600 w-20">삭제</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {loading && (
                             <tr>
-                                <td colSpan={5} className="py-6 text-center text-gray-400">불러오는 중...</td>
+                                <td colSpan={4} className="py-6 text-center text-gray-400">불러오는 중...</td>
                             </tr>
                         )}
                         {draftStudents.map((student) => (
@@ -267,17 +351,6 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                                         <option value="female">여</option>
                                     </select>
                                 </td>
-                                <td className="p-3">
-                                    <select
-                                        value={student.executiveRole ?? ''}
-                                        onChange={(e) => handleUpdate(student.id, 'executiveRole', e.target.value)}
-                                        className="w-full border rounded px-2 py-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-gray-700"
-                                    >
-                                        <option value="">없음</option>
-                                        <option value="president">회장</option>
-                                        <option value="vice">부회장</option>
-                                    </select>
-                                </td>
                                 <td className="p-3 text-center">
                                     <button 
                                         onClick={() => handleDelete(student.id)}
@@ -290,7 +363,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                         ))}
                         {!loading && draftStudents.length === 0 && (
                             <tr>
-                                <td colSpan={5} className="py-8 text-center text-gray-400">등록된 학생이 없습니다.</td>
+                                <td colSpan={4} className="py-8 text-center text-gray-400">등록된 학생이 없습니다.</td>
                             </tr>
                         )}
                     </tbody>
@@ -299,6 +372,18 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
         </div>
 
         <div className="p-6 bg-white border-t border-gray-200 shrink-0 space-y-4">
+            <div className="flex flex-wrap items-center gap-2 py-2 border-b border-gray-100">
+              <span className="text-sm text-gray-600 font-medium">일괄 등록:</span>
+              <button type="button" onClick={handleSampleDownload} className="px-4 py-2.5 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-100 flex items-center gap-2 transition-colors">
+                <FileSpreadsheet size={18} /> 샘플 다운로드
+              </button>
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="px-4 py-2.5 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-100 flex items-center gap-2 transition-colors">
+                <Upload size={18} /> 엑셀/CSV 업로드
+              </button>
+              <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFileChange} />
+              <span className="text-xs text-gray-500">샘플을 받아 엑셀에 입력한 뒤 업로드하세요.</span>
+            </div>
+
             <form onSubmit={handleAdd} className="flex gap-2">
                 <input 
                     type="text" 
@@ -312,11 +397,72 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                 </button>
             </form>
 
+            {uploadPreview !== null && (
+              <div className="mb-4 p-4 bg-gray-100 rounded-xl border border-gray-200">
+                <h3 className="text-sm font-bold text-gray-700 mb-2">업로드 미리보기 (최대 {PREVIEW_MAX}행)</h3>
+                <div className="overflow-x-auto max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="py-2 px-3 text-left font-bold text-gray-600">행</th>
+                        <th className="py-2 px-3 text-left font-bold text-gray-600">번호</th>
+                        <th className="py-2 px-3 text-left font-bold text-gray-600">이름</th>
+                        <th className="py-2 px-3 text-left font-bold text-gray-600">성별</th>
+                        <th className="py-2 px-3 text-left font-bold text-gray-600">오류</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {uploadPreview.slice(0, PREVIEW_MAX).map((r) => (
+                        <tr key={r.rowIndex} className={r.error ? 'bg-red-50' : ''}>
+                          <td className="py-1 px-3">{r.rowIndex}</td>
+                          <td className="py-1 px-3">{r.number}</td>
+                          <td className="py-1 px-3">{r.name}</td>
+                          <td className="py-1 px-3">{r.gender === 'male' ? '남' : r.gender === 'female' ? '여' : ''}</td>
+                          <td className="py-1 px-3 text-red-600 text-xs">{r.error ?? '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleMergeUpload}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold flex items-center gap-1"
+                  >
+                    <Upload size={16} /> 명단에 반영
+                  </button>
+                  {uploadPreview.some((r) => r.error) && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadErrorReport}
+                      className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-sm font-bold hover:bg-gray-50 flex items-center gap-1"
+                    >
+                      <Download size={16} /> 실패 내역 다운로드
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setUploadPreview(null)}
+                    className="px-4 py-2 rounded-xl border border-gray-300 text-gray-500 text-sm hover:bg-gray-50"
+                  >
+                    미리보기 닫기
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-between items-center pt-2">
                 <button onClick={handleReset} className="text-gray-400 hover:text-red-500 text-sm flex items-center gap-1 font-medium">
                     <RotateCcw size={14} /> 명단 초기화
                 </button>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={handleSampleDownload} className="px-4 py-3 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-100 flex items-center gap-2">
+                        <FileSpreadsheet size={18} /> 샘플 다운로드
+                    </button>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="px-4 py-3 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-100 flex items-center gap-2">
+                        <Upload size={18} /> 엑셀/CSV 업로드
+                    </button>
                     <button onClick={handleDownloadPdf} className="px-6 py-3 rounded-xl border border-gray-300 font-bold text-gray-600 hover:bg-gray-50 flex items-center gap-2">
                         <Download size={18} /> PDF 다운로드
                     </button>

@@ -186,7 +186,6 @@ export const saveRosterToDb = async (students: ClassStudent[], classId: string) 
     gender: s.gender ?? null,
     created_by: userId,
   }));
-  console.log('[studentService] saveRosterToDb payload', payload);
   const { error: deleteError } = await supabase
     .from('students')
     .delete()

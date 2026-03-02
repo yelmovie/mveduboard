@@ -451,14 +451,19 @@ export const resendSignupConfirmation = async (email: string) => {
   return true;
 };
 
-/** 비밀번호 재설정 메일 발송. 이메일 존재 여부 노출 금지 — 성공/실패 모두 동일 안내. */
+/** 비밀번호 재설정 메일 발송. 성공 시에만 성공 메시지, 실패 시 오류 메시지 반환. */
 export const requestPasswordReset = async (email: string): Promise<{ ok: boolean; message: string }> => {
-  if (!supabase) return { ok: false, message: 'Supabase 환경변수가 필요합니다.' };
-  const redirectTo = `${typeof window !== 'undefined' ? window.location.origin : ''}/reset-password`;
+  if (!supabase) return { ok: false, message: 'Supabase 환경변수가 설정되지 않았습니다.' };
+  const appOrigin = typeof import.meta.env.VITE_APP_URL === 'string' && import.meta.env.VITE_APP_URL.trim()
+    ? import.meta.env.VITE_APP_URL.trim().replace(/\/$/, '')
+    : (typeof window !== 'undefined' ? window.location.origin : '');
+  const redirectTo = `${appOrigin}/reset-password`;
   const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
-  const message = '등록된 이메일이 있다면 재설정 메일을 보냈습니다. 메일함을 확인해주세요.';
-  if (error && isAuthDebug()) console.log('[requestPasswordReset]', error.message);
-  return { ok: true, message };
+  if (error) {
+    if (isAuthDebug()) console.log('[requestPasswordReset]', error.code, error.message);
+    return { ok: false, message: '메일 전송에 실패했습니다. 잠시 후 다시 시도해주세요.' };
+  }
+  return { ok: true, message: '메일이 전송되었습니다. 메일함을 확인하고 비밀번호를 재설정해주세요.' };
 };
 
 /** 재설정 링크 진입 후 새 비밀번호로 변경 (recovery 세션 필요) */
