@@ -212,6 +212,13 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
     }
   };
 
+  const decodeCsvBuffer = (buf: ArrayBuffer): string => {
+    const utf8 = new TextDecoder('utf-8').decode(buf);
+    if (!utf8.includes('\uFFFD')) return utf8;
+    try { return new TextDecoder('euc-kr').decode(buf); } catch { /* fallback */ }
+    return utf8;
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -220,12 +227,12 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const content = reader.result;
+        const content = reader.result as ArrayBuffer;
         let rows: string[][];
         if (ext === 'csv' || file.name.endsWith('.csv')) {
-          rows = parseCsvText(typeof content === 'string' ? content : new TextDecoder().decode(content as ArrayBuffer));
+          rows = parseCsvText(decodeCsvBuffer(content));
         } else if (ext === 'xlsx' || ext === 'xls') {
-          rows = parseXlsxToRows(content as ArrayBuffer);
+          rows = parseXlsxToRows(content);
         } else {
           alert('CSV 또는 엑셀(.xlsx, .xls) 파일만 업로드할 수 있습니다.');
           return;
@@ -241,11 +248,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
         alert('파일을 읽는 중 오류가 났습니다. 형식을 확인해 주세요.');
       }
     };
-    if (ext === 'csv' || file.name.endsWith('.csv')) {
-      reader.readAsText(file, 'UTF-8');
-    } else {
-      reader.readAsArrayBuffer(file);
-    }
+    reader.readAsArrayBuffer(file);
   };
 
   const handleMergeUpload = () => {
