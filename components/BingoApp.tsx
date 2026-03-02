@@ -1100,15 +1100,17 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
 
                                   {!revealPlayer && (
                                       <div className="mb-6 text-center text-slate-200 text-lg md:text-xl font-semibold">
-                                          먼저 학생을 선택해 공개 화면을 전환하세요.
+                                          {studentList.length === 0
+                                            ? '학생들이 참여 코드로 입장하면 여기에 빙고판이 표시됩니다.'
+                                            : '학생을 선택해 공개 화면을 전환하세요.'}
                                       </div>
                                   )}
 
                                       <div className="relative">
                                       <div className={`grid ${getGridClass(boardSize)} gap-3 w-full flex-1`}>
                                       {Array.from({ length: boardCount }).map((_, i) => {
-                                          const word = revealLayout[i];
-                                          const isMarked = revealMarks[i];
+                                          const word = revealPlayer ? revealLayout[i] : (room.words?.[i] || '');
+                                          const isMarked = revealPlayer ? revealMarks[i] : false;
                                           const sizeClass =
                                               boardSize === 3 ? 'min-h-[140px] text-xl md:text-2xl' :
                                               boardSize === 4 ? 'min-h-[110px] text-lg' :
@@ -1145,24 +1147,44 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
                                       </div>
                                   </div>
 
-                              <div className="bg-white/5 backdrop-blur-md rounded-3xl shadow-[0_10px_30px_rgba(15,23,42,0.25)] border border-white/10 p-6 flex flex-col overflow-hidden">
-                                  <details open className="group">
-                                      <summary className="cursor-pointer list-none flex items-center justify-between text-lg font-semibold text-slate-100 mb-3">
-                                          <span className="flex items-center gap-2"><Users size={20} className="text-indigo-300" /> 호명용 목록 ({studentList.length}명)</span>
-                                          <span className="text-slate-400 group-open:rotate-180 transition-transform">▾</span>
-                                      </summary>
-                                      <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-2">
-                                          {studentList.map((p) => (
-                                              <button
-                                                key={p.id}
-                                                onClick={() => handleRevealPlayer(p.id)}
-                                                className={`w-full px-3 py-2 rounded-xl text-left font-semibold border transition-colors ${room.revealed_student_id === p.id ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-100' : 'bg-white/10 border-white/10 text-slate-200 hover:bg-white/20'}`}
-                                              >
-                                                  {p.display_name}
-                                              </button>
-                                          ))}
-                                      </div>
-                                  </details>
+                              <div className="flex flex-col gap-4">
+                                  <div className="bg-white/5 backdrop-blur-md rounded-3xl shadow-[0_10px_30px_rgba(15,23,42,0.25)] border border-white/10 p-6 flex flex-col overflow-hidden">
+                                      <details open className="group">
+                                          <summary className="cursor-pointer list-none flex items-center justify-between text-lg font-semibold text-slate-100 mb-3">
+                                              <span className="flex items-center gap-2"><Info size={20} className="text-indigo-300" /> 호명용 단어 ({room.words?.length || 0}개)</span>
+                                              <span className="text-slate-400 group-open:rotate-180 transition-transform">▾</span>
+                                          </summary>
+                                          <div className="flex-1 overflow-y-auto grid grid-cols-3 sm:grid-cols-4 gap-3 content-start pr-2 max-h-64">
+                                              {(room.words || []).map((w: string, i: number) => (
+                                                  <div key={i} className="bg-white/10 border border-white/10 rounded-xl px-2 py-3 text-center text-base font-semibold text-slate-200 truncate break-all flex items-center justify-center hover:bg-white/20 transition-colors">
+                                                      {w}
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      </details>
+                                  </div>
+
+                                  <div className="bg-white/5 backdrop-blur-md rounded-3xl shadow-[0_10px_30px_rgba(15,23,42,0.25)] border border-white/10 p-6 flex flex-col overflow-hidden">
+                                      <details open className="group">
+                                          <summary className="cursor-pointer list-none flex items-center justify-between text-lg font-semibold text-slate-100 mb-3">
+                                              <span className="flex items-center gap-2"><Users size={20} className="text-cyan-300" /> 참가 학생 ({studentList.length}명)</span>
+                                              <span className="text-slate-400 group-open:rotate-180 transition-transform">▾</span>
+                                          </summary>
+                                          <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-2 max-h-48">
+                                              {studentList.length === 0 ? (
+                                                  <div className="text-sm text-slate-400 text-center py-4">아직 참가한 학생이 없습니다.</div>
+                                              ) : studentList.map((p) => (
+                                                  <button
+                                                    key={p.id}
+                                                    onClick={() => handleRevealPlayer(p.id)}
+                                                    className={`w-full px-3 py-2 rounded-xl text-left font-semibold border transition-colors ${room.revealed_student_id === p.id ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-100' : 'bg-white/10 border-white/10 text-slate-200 hover:bg-white/20'}`}
+                                                  >
+                                                      {p.display_name}
+                                                  </button>
+                                              ))}
+                                          </div>
+                                      </details>
+                                  </div>
                               </div>
                           </section>
                       </div>
