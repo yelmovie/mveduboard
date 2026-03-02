@@ -148,11 +148,15 @@ export const saveStudyDataAsync = async (data: WeeklyStudyData) => {
   const classId = profile?.class_id ?? null;
   saveStudyDataLocal(data, classId);
   if (!supabase || !classId || profile?.role !== 'teacher') return;
+  if (suppressStudyDataColumnError) return;
   const { error } = await supabase
     .from('classes')
     .update({ study_data: data })
     .eq('id', classId);
   if (error) {
+    if (error.message?.includes('study_data')) {
+      suppressStudyDataColumnError = true;
+    }
     console.warn('[studyService] saveStudyDataAsync supabase error', error.message);
   }
 };
