@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { Home, Grid, Shuffle, Save, Users, Settings, Eraser, CheckSquare, RefreshCcw } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Home, Grid, Shuffle, Save, Users, Settings, Eraser, CheckSquare, RefreshCcw, Sparkles } from 'lucide-react';
 import * as seatService from '../services/seatService';
 import * as studentService from '../services/studentService';
 import { SeatLayout, SeatStudent } from '../types';
@@ -10,6 +10,35 @@ interface SeatAppProps {
   isTeacherMode: boolean;
   studentName?: string | null;
 }
+
+const SeatConfetti: React.FC = () => {
+  const colors = ['#F59E0B', '#EF4444', '#10B981', '#6366F1', '#EC4899', '#3B82F6', '#F97316'];
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      {Array.from({ length: 60 }).map((_, i) => (
+        <div
+          key={i}
+          className="absolute animate-seat-confetti"
+          style={{
+            left: `${Math.random() * 100}%`,
+            top: '-10px',
+            width: `${Math.random() * 8 + 4}px`,
+            height: `${Math.random() * 5 + 3}px`,
+            backgroundColor: colors[i % colors.length],
+            borderRadius: '2px',
+            transform: `rotate(${Math.random() * 360}deg)`,
+            animationDelay: `${Math.random() * 0.8}s`,
+            animationDuration: `${2 + Math.random() * 2}s`,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes seat-confetti { 0% { transform: translateY(0) rotate(0deg); opacity:1; } 100% { transform: translateY(100vh) rotate(720deg); opacity:0; } }
+        .animate-seat-confetti { animation: seat-confetti linear forwards; }
+      `}</style>
+    </div>
+  );
+};
 
 export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, studentName }) => {
   const [layout, setLayout] = useState<SeatLayout | null>(null);
@@ -22,6 +51,13 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
   
   // Seat configuration map (true = desk, false = aisle)
   const [tempSeatMap, setTempSeatMap] = useState<boolean[]>([]);
+
+  // Animation state
+  const [isShuffling, setIsShuffling] = useState(false);
+  const [shuffleDisplay, setShuffleDisplay] = useState<(SeatStudent | null)[]>([]);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [revealedSeats, setRevealedSeats] = useState<Set<number>>(new Set());
+  const shuffleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentStudentName = studentName?.trim();
 
@@ -53,33 +89,87 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
       }
   }, [rows, cols]);
 
+  const runShuffleAnimation = useCallback((finalAssignments: (SeatStudent | null)[], names: string[]) => {
+    setIsShuffling(true);
+    setIsEditing(false);
+    setRevealedSeats(new Set());
+    setShowConfetti(false);
+
+    const totalSlots = rows * cols;
+    const validMap = tempSeatMap.length === totalSlots ? tempSeatMap : Array(totalSlots).fill(true);
+    const seatIndices = validMap.map((v, i) => v ? i : -1).filter(i => i >= 0);
+
+    let tick = 0;
+    const maxTicks = 20;
+    const interval = setInterval(() => {
+      tick++;
+      const scrambled: (SeatStudent | null)[] = Array(totalSlots).fill(null);
+      const shuffledNames = [...names].sort(() => Math.random() - 0.5);
+      let ni = 0;
+      for (const si of seatIndices) {
+        if (ni < shuffledNames.length) {
+          scrambled[si] = { id: '', name: shuffledNames[ni++] };
+        }
+      }
+      setShuffleDisplay(scrambled);
+
+      if (tick >= maxTicks) {
+        clearInterval(interval);
+        setShuffleDisplay(finalAssignments);
+
+        let revealIdx = 0;
+        const revealOrder = seatIndices.filter(i => finalAssignments[i] !== null).sort(() => Math.random() - 0.5);
+        const revealInterval = setInterval(() => {
+          if (revealIdx >= revealOrder.length) {
+            clearInterval(revealInterval);
+            setIsShuffling(false);
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 3500);
+            return;
+          }
+          setRevealedSeats(prev => {
+            const next = new Set(prev);
+            const batch = Math.min(3, revealOrder.length - revealIdx);
+            for (let b = 0; b < batch; b++) {
+              next.add(revealOrder[revealIdx + b]);
+            }
+            return next;
+          });
+          revealIdx += 3;
+        }, 120);
+      }
+    }, 100);
+  }, [rows, cols, tempSeatMap]);
+
   const handleShuffle = () => {
+    let names: string[];
+
     if (!nameInput.trim()) {
-        // Try to pull existing names if just reshuffling layout
         if (layout) {
-            const existingNames = layout.assignments.filter(s => s !== null).map(s => s!.name);
-            const newAssignments = seatService.shuffleSeats(existingNames, rows, cols, tempSeatMap);
-            const newLayout = seatService.saveSeatLayout(rows, cols, newAssignments, tempSeatMap);
-            setLayout(newLayout);
-            setIsEditing(false);
+            names = layout.assignments.filter(s => s !== null).map(s => s!.name);
+        } else {
+            alert('학생 명단을 입력해주세요.');
             return;
         }
-        alert('학생 명단을 입력해주세요.');
-        return;
+    } else {
+        names = nameInput.split(/[\n,]+/).map(s => s.trim()).filter(s => s !== '');
     }
 
-    const names = nameInput.split(/[\n,]+/).map(s => s.trim()).filter(s => s !== '');
-    // Check capacity
     const availableSeats = tempSeatMap.filter(s => s).length;
     if (names.length > availableSeats) {
         alert(`학생 수(${names.length}명)가 배치 가능한 자리(${availableSeats}석)보다 많습니다!`);
         return;
     }
 
-    const assignments = seatService.shuffleSeats(names, rows, cols, tempSeatMap);
-    const newLayout = seatService.saveSeatLayout(rows, cols, assignments, tempSeatMap);
+    if (layout) {
+      seatService.saveHistory(layout);
+    }
+
+    const finalAssignments = seatService.shuffleSeats(names, rows, cols, tempSeatMap);
+    const newLayout = seatService.saveSeatLayout(rows, cols, finalAssignments, tempSeatMap);
     setLayout(newLayout);
-    setIsEditing(false);
+
+    runShuffleAnimation(finalAssignments, names);
   };
 
   const handleEdit = () => {
@@ -209,11 +299,20 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
              </div>
          ) : (
              <div className="max-w-6xl mx-auto">
+                 {showConfetti && <SeatConfetti />}
                  {layout ? (
                      <div className="flex flex-col items-center">
                          <div className="w-full bg-black/80 text-white text-center py-2 rounded-lg mb-8 max-w-md shadow-md">
                              교탁 / 칠판
                          </div>
+
+                         {isShuffling && (
+                           <div className="mb-6 text-center">
+                             <div className="inline-flex items-center gap-2 bg-amber-100 text-amber-800 px-6 py-3 rounded-full font-bold text-lg shadow-md animate-pulse">
+                               <Sparkles className="text-amber-500" size={24} /> 자리 배치 중...
+                             </div>
+                           </div>
+                         )}
                          
                          <div 
                             className="grid gap-4 md:gap-6 w-full max-w-5xl"
@@ -221,8 +320,7 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
                                 gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))` 
                             }}
                          >
-                            {layout.assignments.map((seatStudent, idx) => {
-                                 // Check seatMap if available
+                            {(isShuffling ? shuffleDisplay : layout.assignments).map((seatStudent, idx) => {
                                  const isSeat = layout.seatMap ? layout.seatMap[idx] : true;
                                  const isCurrentSeat =
                                    !isTeacherMode &&
@@ -230,28 +328,37 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
                                    seatStudent?.name === currentStudentName;
                                  
                                  if (!isSeat) {
-                                     // Aisle / Empty space
                                      return <div key={idx} className="aspect-[4/3]"></div>;
                                  }
+
+                                 const isRevealed = !isShuffling || revealedSeats.has(idx);
+                                 const isJustRevealed = isShuffling && revealedSeats.has(idx);
 
                                  return (
                                      <div 
                                         key={idx} 
                                         className={`
-                                            aspect-[4/3] rounded-xl flex flex-col items-center justify-center p-2 shadow-sm border-b-4 transition-transform hover:scale-105
+                                            aspect-[4/3] rounded-xl flex flex-col items-center justify-center p-2 shadow-sm border-b-4 transition-all duration-300
                                         ${seatStudent ? 'bg-white border-amber-200' : 'bg-white/50 border-gray-200 border-dashed'}
                                         ${isCurrentSeat ? 'ring-4 ring-sky-300 bg-sky-100 border-sky-400 shadow-md' : ''}
+                                        ${isJustRevealed ? 'scale-110 ring-4 ring-amber-400 shadow-lg bg-amber-50 border-amber-400' : ''}
+                                        ${isShuffling && !isRevealed && seatStudent ? 'bg-amber-100/80' : ''}
                                         `}
+                                        style={isJustRevealed ? { animation: 'seat-pop 0.4s ease-out' } : undefined}
                                      >
                                         {seatStudent ? (
+                                          isRevealed ? (
                                              <>
-                                               <Users size={24} className={isCurrentSeat ? 'text-sky-500 mb-1' : 'text-amber-400 mb-1'} />
+                                               <Users size={24} className={isCurrentSeat ? 'text-sky-500 mb-1' : isJustRevealed ? 'text-amber-600 mb-1' : 'text-amber-400 mb-1'} />
                                                <span
-                                                 className={`font-bold text-lg md:text-xl truncate w-full text-center ${isCurrentSeat ? 'text-sky-900' : 'text-gray-800'}`}
+                                                 className={`font-bold text-lg md:text-xl truncate w-full text-center ${isCurrentSeat ? 'text-sky-900' : isJustRevealed ? 'text-amber-900' : 'text-gray-800'}`}
                                                >
                                                    {seatStudent.name}
-                                                </span>
+                                               </span>
                                              </>
+                                          ) : (
+                                            <div className="text-2xl animate-pulse">❓</div>
+                                          )
                                          ) : (
                                              <span className="text-gray-300 text-xs">빈 자리</span>
                                          )}
@@ -259,6 +366,13 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
                                  );
                              })}
                          </div>
+                         <style>{`
+                           @keyframes seat-pop {
+                             0% { transform: scale(0.5); opacity: 0.5; }
+                             60% { transform: scale(1.15); }
+                             100% { transform: scale(1.1); opacity: 1; }
+                           }
+                         `}</style>
                      </div>
                  ) : (
                      <div className="text-center py-20 text-gray-400">
