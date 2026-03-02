@@ -368,6 +368,14 @@ export interface Coupon {
 
 export type AgendaStatus = 'proposed' | 'discussing' | 'decided';
 
+export interface AgendaComment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface Agenda {
   id: string;
   title: string;
@@ -378,6 +386,7 @@ export interface Agenda {
   createdAt: string;
   result?: string;
   votes?: Record<string, 'agree' | 'disagree'>;
+  comments?: AgendaComment[];
   secretaryId?: string;
   secretaryName?: string;
   notes?: string;

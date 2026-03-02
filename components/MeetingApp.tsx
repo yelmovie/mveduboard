@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, MessageSquare, ThumbsUp, Plus, Trash2, ArrowRight, CheckCircle2, XCircle, PieChart, Users, ChevronDown, ChevronUp, PenLine, Eye } from 'lucide-react';
+import { Home, MessageSquare, ThumbsUp, Plus, Trash2, ArrowRight, CheckCircle2, XCircle, PieChart, Users, ChevronDown, ChevronUp, PenLine, Eye, Send, MessageCircle } from 'lucide-react';
 import * as meetingService from '../services/meetingService';
 import * as studentService from '../services/studentService';
-import { Agenda, AgendaStatus, Participant, ClassStudent } from '../types';
+import { Agenda, AgendaComment, AgendaStatus, Participant, ClassStudent } from '../types';
 
 interface MeetingAppProps {
   onBack: () => void;
@@ -11,6 +11,150 @@ interface MeetingAppProps {
   student: Participant | null;
   onLoginRequest: () => void;
 }
+
+// --- Proposed Section with Vote + Comments ---
+const ProposedSection: React.FC<{
+  item: Agenda;
+  roster: ClassStudent[];
+  isTeacherMode: boolean;
+  currentUserId: string | null;
+  rosterStudent: ClassStudent | null | undefined;
+  myVote: string | null;
+  agreeCount: number;
+  disagreeCount: number;
+  onVote: (id: string, type: 'agree' | 'disagree') => void;
+  onMove: (id: string, status: AgendaStatus, result?: string) => void;
+  onLoginRequest: () => void;
+  loadData: () => void;
+}> = ({
+  item, roster, isTeacherMode, currentUserId, rosterStudent,
+  myVote, agreeCount, disagreeCount,
+  onVote, onMove, onLoginRequest, loadData,
+}) => {
+  const [commentText, setCommentText] = useState('');
+  const [showComments, setShowComments] = useState(false);
+  const comments = item.comments || [];
+
+  const handleAddComment = () => {
+    if (!commentText.trim()) return;
+    if (!currentUserId) {
+      onLoginRequest();
+      return;
+    }
+    const name = isTeacherMode ? '선생님' : (rosterStudent?.name || '익명');
+    meetingService.addComment(item.id, currentUserId, name, commentText.trim());
+    setCommentText('');
+    loadData();
+  };
+
+  const handleDeleteComment = (commentId: string) => {
+    if (!confirm('댓글을 삭제하시겠습니까?')) return;
+    meetingService.deleteComment(item.id, commentId);
+    loadData();
+  };
+
+  const totalVotes = agreeCount + disagreeCount;
+
+  return (
+    <div className="pt-2 border-t border-gray-50 space-y-3">
+      {/* Vote Buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => onVote(item.id, 'agree')}
+          className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-1 transition-all ${myVote === 'agree' ? 'bg-green-500 text-white shadow-md' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+        >
+          <CheckCircle2 size={16} /> 찬성 ({agreeCount})
+        </button>
+        <button
+          onClick={() => onVote(item.id, 'disagree')}
+          className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-1 transition-all ${myVote === 'disagree' ? 'bg-red-500 text-white shadow-md' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
+        >
+          <XCircle size={16} /> 반대 ({disagreeCount})
+        </button>
+      </div>
+
+      {/* Vote Bar */}
+      {totalVotes > 0 && (
+        <div className="flex h-2 rounded-full overflow-hidden w-full bg-gray-100">
+          <div style={{ width: `${(agreeCount / totalVotes) * 100}%` }} className="bg-green-400 h-full transition-all" />
+          <div style={{ width: `${(disagreeCount / totalVotes) * 100}%` }} className="bg-red-400 h-full transition-all" />
+        </div>
+      )}
+
+      {/* Comments Toggle + Teacher Action */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setShowComments(!showComments)}
+          className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
+        >
+          <MessageCircle size={14} />
+          댓글 {comments.length > 0 && <span className="bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full font-bold">{comments.length}</span>}
+          {showComments ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+        {isTeacherMode && (
+          <button
+            onClick={() => onMove(item.id, 'discussing')}
+            className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold flex items-center gap-1 hover:bg-blue-200 transition-colors"
+          >
+            토의 시작 <ArrowRight size={12} />
+          </button>
+        )}
+      </div>
+
+      {/* Comments Area */}
+      {showComments && (
+        <div className="space-y-2">
+          {comments.length > 0 ? (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {comments.map(c => (
+                <div key={c.id} className="bg-gray-50 rounded-lg px-3 py-2 text-xs border border-gray-100">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-gray-700">{c.authorName}</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-300 text-[10px]">
+                        {new Date(c.createdAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      {(isTeacherMode || c.authorId === currentUserId) && (
+                        <button
+                          onClick={() => handleDeleteComment(c.id)}
+                          className="text-gray-300 hover:text-red-400 ml-1"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-gray-600 whitespace-pre-wrap">{c.text}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center text-xs text-gray-300 py-2">아직 댓글이 없습니다.</div>
+          )}
+
+          {/* Comment Input */}
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={commentText}
+              onChange={e => setCommentText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddComment(); }}
+              className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-2 focus:ring-2 focus:ring-yellow-300 focus:border-yellow-300"
+              placeholder="의견을 남겨주세요..."
+            />
+            <button
+              onClick={handleAddComment}
+              disabled={!commentText.trim()}
+              className="bg-yellow-500 text-white p-2 rounded-lg hover:bg-yellow-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Send size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // --- Discussing Section with Secretary + Notes ---
 const DiscussingSection: React.FC<{
@@ -352,21 +496,22 @@ export const MeetingApp: React.FC<MeetingAppProps> = ({ onBack, isTeacherMode, s
                         
                         {/* Status Specific UI */}
                         
-                        {/* 1. Proposed: Likes */}
+                        {/* 1. Proposed: Vote + Comments */}
                         {status === 'proposed' && (
-                            <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-                                <button 
-                                    onClick={() => handleLike(item.id)}
-                                    className="flex items-center gap-1 text-sm text-gray-500 hover:text-blue-500"
-                                >
-                                    <ThumbsUp size={16} /> 좋아요 {item.likes}
-                                </button>
-                                {isTeacherMode && (
-                                    <button onClick={() => handleMove(item.id, 'discussing')} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold flex items-center gap-1">
-                                        토의 시작 <ArrowRight size={12}/>
-                                    </button>
-                                )}
-                            </div>
+                            <ProposedSection
+                                item={item}
+                                roster={roster}
+                                isTeacherMode={isTeacherMode}
+                                currentUserId={currentUserId}
+                                rosterStudent={rosterStudent}
+                                myVote={myVote}
+                                agreeCount={agreeCount}
+                                disagreeCount={disagreeCount}
+                                onVote={handleVote}
+                                onMove={handleMove}
+                                onLoginRequest={onLoginRequest}
+                                loadData={loadData}
+                            />
                         )}
 
                         {/* 2. Discussing: Secretary Notes + Vote */}

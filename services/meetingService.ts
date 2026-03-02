@@ -1,4 +1,4 @@
-import { Agenda, AgendaStatus } from '../types';
+import { Agenda, AgendaComment, AgendaStatus } from '../types';
 import { generateUUID } from '../src/utils/uuid';
 
 const LS_KEY = 'edu_meeting_agendas';
@@ -86,6 +86,31 @@ export const updateNotes = (agendaId: string, notes: string) => {
   const agendas = getAgendas();
   const updated = agendas.map(a =>
     a.id === agendaId ? { ...a, notes } : a
+  );
+  localStorage.setItem(LS_KEY, JSON.stringify(updated));
+};
+
+export const addComment = (agendaId: string, authorId: string, authorName: string, text: string) => {
+  const agendas = getAgendas();
+  const comment: AgendaComment = {
+    id: generateUUID(),
+    authorId,
+    authorName,
+    text,
+    createdAt: new Date().toISOString(),
+  };
+  const updated = agendas.map(a =>
+    a.id === agendaId ? { ...a, comments: [...(a.comments || []), comment] } : a
+  );
+  localStorage.setItem(LS_KEY, JSON.stringify(updated));
+};
+
+export const deleteComment = (agendaId: string, commentId: string) => {
+  const agendas = getAgendas();
+  const updated = agendas.map(a =>
+    a.id === agendaId
+      ? { ...a, comments: (a.comments || []).filter(c => c.id !== commentId) }
+      : a
   );
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
 };
