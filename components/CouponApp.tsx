@@ -26,14 +26,23 @@ export const CouponApp: React.FC<CouponAppProps> = ({ onBack, isTeacherMode, stu
 
   useEffect(() => {
     const init = async () => {
-      try { await studentService.fetchRosterFromDb(); } catch {}
-      setRoster(studentService.getRoster());
+      try {
+        const fetched = await studentService.fetchRosterFromDb();
+        if (fetched.length > 0) {
+          studentService.saveRoster(fetched);
+          setRoster(fetched);
+        } else {
+          setRoster(studentService.getRoster());
+        }
+      } catch {
+        setRoster(studentService.getRoster());
+      }
     };
     init();
     loadCoupons();
     const interval = setInterval(loadCoupons, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isTeacherMode]);
 
   const loadCoupons = () => {
     setCoupons(couponService.getCoupons());
