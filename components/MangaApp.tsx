@@ -276,11 +276,6 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
   // --- Student Flow Handlers ---
   
   const initCreation = (task: MangaTask) => {
-      // Allow teacher to enter creation mode for examples
-      if (!student && !isTeacherMode) {
-          onLoginRequest();
-          return;
-      }
       setSelectedTask(task);
       setView('layout_select');
   };
@@ -317,11 +312,11 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
   const handleSubmitComic = () => {
     if (!selectedTask) return;
     
-    // Validate user
     const authorId = isTeacherMode ? 'teacher' : student?.id;
     const authorName = isTeacherMode ? '선생님' : student?.nickname;
 
     if (!authorId || !authorName) {
+        alert('제출하려면 먼저 로그인해 주세요.');
         onLoginRequest();
         return;
     }
@@ -386,6 +381,7 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
 
   // Canvas Drawing Logic
   const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -408,6 +404,7 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
     if (!isDrawing || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -738,12 +735,13 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
                          >
                             {/* Drawing Mode */}
                             {displayPanelType === 'draw' && (
-                                <div className="relative flex-1 bg-white cursor-crosshair touch-none">
+                                <div className="relative flex-1 bg-white cursor-crosshair touch-none select-none" style={{ touchAction: 'none' }}>
                                     <canvas 
                                         ref={canvasRef}
                                         width={512}
                                         height={512}
-                                        className="w-full h-full"
+                                        className="w-full h-full touch-none"
+                                        style={{ touchAction: 'none' }}
                                         onMouseDown={startDraw}
                                         onMouseMove={draw}
                                         onMouseUp={stopDraw}
