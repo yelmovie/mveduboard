@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { Home, Plus, Image as ImageIcon, PenTool, Upload, MessageSquare, Check, X, Send, Layout, Trash2, Heart, User, AlertCircle, ArrowRight, Grid, FileText, Download, Eraser } from 'lucide-react';
+import { Home, Plus, Image as ImageIcon, PenTool, Upload, MessageSquare, Check, X, Send, Layout, Trash2, Heart, User, AlertCircle, ArrowRight, Grid, FileText, Download, Eraser, Maximize2, Minimize2 } from 'lucide-react';
 import * as mangaService from '../services/mangaService';
 import { MangaTask, MangaEpisode, MangaPanel, MangaLayout, Participant, MangaComment, SpeechBubble, SpeechBubbleShape } from '../types';
 
@@ -44,6 +44,7 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
   const dragRef = useRef<{ id: string; mode: 'move' | 'tail' | 'resize'; offsetX: number; offsetY: number } | null>(null);
   const [canvasScale, setCanvasScale] = useState(1);
+  const [isCanvasFullscreen, setIsCanvasFullscreen] = useState(false);
 
   // --- Detail View State ---
   const [commentInput, setCommentInput] = useState('');
@@ -724,18 +725,22 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
                        )}
 
                        {/* Canvas Area */}
-                       <div className="w-full max-w-[420px] sm:max-w-[520px] md:max-w-[640px] lg:max-w-[760px] sticky top-4 z-10">
+                       <div
+                         className={isCanvasFullscreen ? 'fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4' : 'w-full max-w-[420px] sm:max-w-[520px] md:max-w-[640px] lg:max-w-[760px] sticky top-4 z-10'}
+                         onClick={isCanvasFullscreen ? (e) => { if (e.target === e.currentTarget) setIsCanvasFullscreen(false); } : undefined}
+                       >
                          <div
                            ref={editorAreaRef}
-                           className="bg-white w-full aspect-square shadow-lg rounded-xl overflow-hidden relative border border-gray-300 flex flex-col"
-                           style={{
-                             transform: `scale(${canvasScale})`,
-                             transformOrigin: 'center top',
-                           }}
+                           onClick={(e) => isCanvasFullscreen && e.stopPropagation()}
+                           className="bg-white shadow-lg rounded-xl overflow-hidden relative border border-gray-300 flex flex-col"
+                           style={isCanvasFullscreen
+                             ? { width: 'min(90vh, 90vw)', aspectRatio: '1', transform: `scale(${canvasScale})`, transformOrigin: 'center center' }
+                             : { width: '100%', aspectRatio: '1', transform: `scale(${canvasScale})`, transformOrigin: 'center top' }
+                           }
                          >
                             {/* Drawing Mode */}
                             {displayPanelType === 'draw' && (
-                                <div className="relative flex-1 bg-white cursor-crosshair touch-none select-none" style={{ touchAction: 'none' }}>
+                                <div className="relative flex-1 bg-white cursor-crosshair touch-none select-none min-h-0" style={{ touchAction: 'none' }}>
                                     <canvas 
                                         ref={canvasRef}
                                         width={512}
@@ -750,7 +755,16 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
                                         onTouchMove={draw}
                                         onTouchEnd={stopDraw}
                                     />
-                                    <button onClick={clearCanvas} className="absolute top-2 right-2 bg-white/80 p-2 rounded shadow text-xs">지우기</button>
+                                    <div className="absolute top-2 right-2 flex gap-2">
+                                        <button
+                                          onClick={() => setIsCanvasFullscreen(!isCanvasFullscreen)}
+                                          className="bg-white/90 hover:bg-white p-2 rounded shadow text-xs flex items-center gap-1 font-bold"
+                                          title={isCanvasFullscreen ? '축소' : '전체 화면'}
+                                        >
+                                          {isCanvasFullscreen ? <><Minimize2 size={14}/> 축소</> : <><Maximize2 size={14}/> 전체</>}
+                                        </button>
+                                        <button onClick={clearCanvas} className="bg-white/90 hover:bg-white p-2 rounded shadow text-xs">지우기</button>
+                                    </div>
                                 </div>
                             )}
 
