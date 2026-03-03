@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, Send, User, MessageCircle, ChevronLeft, Search, CheckCheck, Save } from 'lucide-react';
+import { Home, Send, User, MessageCircle, ChevronLeft, Search, CheckCheck, Save, PanelLeftClose, PanelLeft } from 'lucide-react';
 import * as messageService from '../services/messageService';
 import { PrivateMessage, Participant } from '../types';
 
@@ -132,6 +132,7 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
   const [studentList, setStudentList] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showStudentList, setShowStudentList] = useState(true);
 
   const confirmAndLeaveChat = (studentName: string, afterLeave?: () => void) => {
       const ok = window.confirm('채팅방을 나가시겠습니까? 대화 내용은 삭제됩니다.');
@@ -261,7 +262,7 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
                     </button>
                     {activeStudent ? (
                         <button
-                            onClick={() => confirmAndLeaveChat(activeStudent, () => setActiveStudent(null))}
+                            onClick={() => confirmAndLeaveChat(activeStudent, () => { setActiveStudent(null); setShowStudentList(true); })}
                             className="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 text-sm"
                         >
                             나가기
@@ -280,18 +281,40 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
 
           <div className={`flex-1 flex overflow-hidden w-full ${embedded ? '' : 'max-w-7xl mx-auto sm:p-4'}`}>
               <div className={`bg-white shadow-xl w-full flex overflow-hidden border border-gray-200 ${embedded ? '' : 'rounded-2xl'}`}>
-                  {/* Sidebar (Student List) */}
-                  <div className={`w-full sm:w-80 bg-gray-50 border-r border-gray-200 flex flex-col ${activeStudent ? 'hidden sm:flex' : 'flex'}`}>
-                      <div className="p-4 border-b border-gray-200 bg-white">
-                          <div className="relative">
-                              <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                              <input 
-                                type="text" 
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                placeholder="이름 검색..." 
-                                className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm"
-                              />
+                  {/* Toggle: Show list when hidden */}
+                  {!showStudentList && (
+                      <button
+                          onClick={() => setShowStudentList(true)}
+                          className="shrink-0 w-12 bg-gray-100 hover:bg-emerald-50 border-r border-gray-200 flex flex-col items-center justify-center gap-1 py-4 text-gray-600 hover:text-emerald-600 transition-colors"
+                          title="학생 명단 보기"
+                      >
+                          <PanelLeft size={22} />
+                          <span className="text-[10px] font-bold">명단</span>
+                      </button>
+                  )}
+
+                  {/* Sidebar (Student List) - Toggleable */}
+                  {showStudentList && (
+                  <div className={`w-full sm:w-80 bg-gray-50 border-r border-gray-200 flex flex-col shrink-0 ${activeStudent ? 'hidden sm:flex' : 'flex'}`}>
+                      <div className="p-4 border-b border-gray-200 bg-white shrink-0">
+                          <div className="flex items-center gap-2">
+                              <div className="relative flex-1 min-w-0">
+                                  <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                                  <input 
+                                    type="text" 
+                                    value={search}
+                                    onChange={e => setSearch(e.target.value)}
+                                    placeholder="이름 검색..." 
+                                    className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm"
+                                  />
+                              </div>
+                              <button
+                                  onClick={() => setShowStudentList(false)}
+                                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 shrink-0"
+                                  title="명단 접기"
+                              >
+                                  <PanelLeftClose size={20} />
+                              </button>
                           </div>
                       </div>
                       <div className="flex-1 overflow-y-auto">
@@ -320,9 +343,10 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
                           })}
                       </div>
                   </div>
+                  )}
 
                   {/* Main Chat Area */}
-                  <div className={`flex-1 flex flex-col ${!activeStudent ? 'hidden sm:flex' : 'flex'}`}>
+                  <div className={`flex-1 flex flex-col min-w-0 ${!activeStudent ? 'hidden sm:flex' : 'flex'}`}>
                       {activeStudent ? (
                           <ChatRoom 
                             title={activeStudent}
@@ -330,8 +354,8 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
                             messages={messages}
                             currentUserId="teacher"
                             onSendMessage={handleSendMessage}
-                            onBack={() => setActiveStudent(null)}
-                            onLeave={() => confirmAndLeaveChat(activeStudent, () => setActiveStudent(null))}
+                            onBack={() => { setActiveStudent(null); setShowStudentList(true); }}
+                            onLeave={() => confirmAndLeaveChat(activeStudent, () => { setActiveStudent(null); setShowStudentList(true); })}
                           />
                       ) : (
                           <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-slate-50">

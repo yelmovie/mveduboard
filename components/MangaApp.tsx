@@ -41,6 +41,7 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
   const [brushSize, setBrushSize] = useState(6);
   const [brushColor, setBrushColor] = useState('#2563EB');
   const [isEraser, setIsEraser] = useState(false);
+  const [isHighlighter, setIsHighlighter] = useState(false);
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
   const dragRef = useRef<{ id: string; mode: 'move' | 'tail' | 'resize'; offsetX: number; offsetY: number } | null>(null);
   const [canvasScale, setCanvasScale] = useState(1);
@@ -112,6 +113,9 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
     '#DCFCE7',
     '#FFE4E6',
     '#E2E8F0',
+  ];
+  const HIGHLIGHTER_COLORS = [
+    '#FEF08A', '#BBF7D0', '#FBCFE8', '#BFDBFE', '#FED7AA', '#E9D5FF',
   ];
 
   const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
@@ -398,9 +402,11 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
     const y = (clientY - rect.top) * scaleY;
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.lineWidth = brushSize;
+    ctx.lineWidth = isHighlighter ? Math.max(brushSize, 12) : brushSize;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.strokeStyle = brushColor;
+    ctx.globalAlpha = isHighlighter ? 0.45 : 1;
     ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
   };
 
@@ -726,15 +732,15 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
 
                        {/* Canvas Area */}
                        <div
-                         className={isCanvasFullscreen ? 'fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4' : 'w-full max-w-[420px] sm:max-w-[520px] md:max-w-[640px] lg:max-w-[760px] sticky top-4 z-10'}
+                         className={isCanvasFullscreen ? 'fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center p-4 gap-4 overflow-y-auto' : 'w-full max-w-[420px] sm:max-w-[520px] md:max-w-[640px] lg:max-w-[760px] sticky top-4 z-10'}
                          onClick={isCanvasFullscreen ? (e) => { if (e.target === e.currentTarget) setIsCanvasFullscreen(false); } : undefined}
                        >
                          <div
                            ref={editorAreaRef}
                            onClick={(e) => isCanvasFullscreen && e.stopPropagation()}
-                           className="bg-white shadow-lg rounded-xl overflow-hidden relative border border-gray-300 flex flex-col"
+                           className="bg-white shadow-lg rounded-xl overflow-hidden relative border border-gray-300 flex flex-col shrink-0"
                            style={isCanvasFullscreen
-                             ? { width: 'min(90vh, 90vw)', aspectRatio: '1', transform: `scale(${canvasScale})`, transformOrigin: 'center center' }
+                             ? { width: 'min(70vh, 70vw)', aspectRatio: '1', transform: `scale(${canvasScale})`, transformOrigin: 'center center' }
                              : { width: '100%', aspectRatio: '1', transform: `scale(${canvasScale})`, transformOrigin: 'center top' }
                            }
                          >
@@ -843,6 +849,30 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
                             </div>
                             
                          </div>
+
+                         {/* Fullscreen Draw Tools */}
+                         {isCanvasFullscreen && displayPanelType === 'draw' && (
+                           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[420px] sm:max-w-[520px] bg-white rounded-xl shadow-sm p-4 space-y-3 shrink-0">
+                             <div className="text-xs font-bold text-gray-500">도구 설정</div>
+                             <div className="flex flex-wrap gap-2">
+                               <button type="button" onClick={() => { setIsEraser(false); setIsHighlighter(false); }} className={`h-12 px-4 rounded-xl text-sm font-bold border flex items-center gap-2 ${!isEraser && !isHighlighter ? 'bg-white border-purple-300 text-purple-700 shadow-sm' : 'bg-gray-50 text-gray-500 border-gray-200'}`}><PenTool size={16}/> 그리기</button>
+                               <button type="button" onClick={() => { setIsEraser(false); setIsHighlighter(true); if (brushSize < 12) setBrushSize(12); }} className={`h-12 px-4 rounded-xl text-sm font-bold border flex items-center gap-2 ${isHighlighter ? 'bg-white border-amber-300 text-amber-700 shadow-sm' : 'bg-gray-50 text-gray-500 border-gray-200'}`}><span className="text-lg">🖍</span> 형광펜</button>
+                               <button type="button" onClick={() => { setIsEraser(true); setIsHighlighter(false); }} className={`h-12 px-4 rounded-xl text-sm font-bold border flex items-center gap-2 ${isEraser ? 'bg-white border-purple-300 text-purple-700 shadow-sm' : 'bg-gray-50 text-gray-500 border-gray-200'}`}><Eraser size={16}/> 지우기</button>
+                             </div>
+                             <div>
+                               <label className="text-xs font-bold text-gray-500 mb-1 block">선 굵기</label>
+                               <input type="range" min={isHighlighter ? 12 : 2} max={isHighlighter ? 40 : 24} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full" />
+                             </div>
+                             <div>
+                               <label className="text-xs font-bold text-gray-500 mb-1 block">색상</label>
+                               <div className="flex gap-2 flex-wrap">
+                                 {(isHighlighter ? HIGHLIGHTER_COLORS : PASTEL_COLORS).map((color) => (
+                                   <button key={color} type="button" onClick={() => { setBrushColor(color); setIsEraser(false); }} className={`w-8 h-8 rounded-full border-2 ${brushColor === color && !isEraser ? 'border-purple-500 ring-2 ring-purple-200' : 'border-gray-200'}`} style={{ backgroundColor: color }} aria-label="브러시 색상" />
+                                 ))}
+                               </div>
+                             </div>
+                           </div>
+                         )}
                        </div>
 
                        {/* Tools Panel */}
@@ -895,27 +925,34 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
                             {displayPanelType === 'draw' && (
                               <div className="space-y-3 animate-fade-in-up">
                                 <div className="flex flex-col sm:flex-row gap-2">
-                                        <button 
+                                        <button
                                     type="button"
-                                    onClick={() => setIsEraser(false)}
-                                    className={`h-12 px-4 rounded-xl text-sm font-bold border flex items-center justify-center gap-2 ${!isEraser ? 'bg-white border-purple-300 text-purple-700 shadow-sm' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
+                                    onClick={() => { setIsEraser(false); setIsHighlighter(false); }}
+                                    className={`h-12 px-4 rounded-xl text-sm font-bold border flex items-center justify-center gap-2 ${!isEraser && !isHighlighter ? 'bg-white border-purple-300 text-purple-700 shadow-sm' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
                                   >
                                     <PenTool size={16} /> 그리기
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setIsEraser(true)}
+                                    onClick={() => { setIsEraser(false); setIsHighlighter(true); if (brushSize < 12) setBrushSize(12); }}
+                                    className={`h-12 px-4 rounded-xl text-sm font-bold border flex items-center justify-center gap-2 ${isHighlighter ? 'bg-white border-amber-300 text-amber-700 shadow-sm' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
+                                  >
+                                    <span className="text-lg">🖍</span> 형광펜
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setIsEraser(true); setIsHighlighter(false); }}
                                     className={`h-12 px-4 rounded-xl text-sm font-bold border flex items-center justify-center gap-2 ${isEraser ? 'bg-white border-purple-300 text-purple-700 shadow-sm' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
                                   >
                                     <Eraser size={16} /> 지우기
-                                        </button>
+                                  </button>
                                     </div>
                                 <div>
                                   <label className="text-xs font-bold text-gray-500 mb-2 block">선 굵기</label>
                                   <input
                                     type="range"
-                                    min={2}
-                                    max={24}
+                                    min={isHighlighter ? 12 : 2}
+                                    max={isHighlighter ? 40 : 24}
                                     value={brushSize}
                                     onChange={(e) => setBrushSize(Number(e.target.value))}
                                     className="w-full"
@@ -924,13 +961,14 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
                                 <div>
                                   <label className="text-xs font-bold text-gray-500 mb-2 block">색상</label>
                                   <div className="flex gap-2 flex-wrap">
-                                    {PASTEL_COLORS.map((color) => (
+                                    {(isHighlighter ? HIGHLIGHTER_COLORS : PASTEL_COLORS).map((color) => (
                                       <button
                                         key={color}
                                         type="button"
                                         onClick={() => {
                                           setBrushColor(color);
                                           setIsEraser(false);
+                                          if (isHighlighter) setIsHighlighter(true);
                                         }}
                                         className={`w-8 h-8 rounded-full border-2 ${brushColor === color && !isEraser ? 'border-purple-500 ring-2 ring-purple-200' : 'border-gray-200'}`}
                                         style={{ backgroundColor: color }}
