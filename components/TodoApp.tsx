@@ -324,7 +324,13 @@ export const TodoApp: React.FC<TodoAppProps> = ({ onBack, isTeacherMode, student
 
                                         {/* Body: Incomplete Students (Large Names) */}
                                         <div className="flex-1 p-4 bg-white relative overflow-y-auto">
-                                            {incompleteStudents.length === 0 ? (
+                                            {roster.length === 0 ? (
+                                                <div className="h-full flex flex-col items-center justify-center text-amber-600 text-center px-2">
+                                                    <UserCheck size={48} className="mb-2 opacity-60" />
+                                                    <span className="font-bold text-sm">학급 명부를 먼저 등록해주세요</span>
+                                                    <span className="text-xs mt-1 text-gray-500">선생님 대시보드 → 학급 명부 관리</span>
+                                                </div>
+                                            ) : incompleteStudents.length === 0 ? (
                                                 <div className="h-full flex flex-col items-center justify-center text-green-500 animate-fade-in-up">
                                                     <ShieldCheck size={64} className="mb-2 drop-shadow-md" />
                                                     <span className="font-bold text-xl">모두 완료!</span>
@@ -363,7 +369,7 @@ export const TodoApp: React.FC<TodoAppProps> = ({ onBack, isTeacherMode, student
                                             </button>
                                         </div>
                                         
-                                        {incompleteStudents.length === 0 && (
+                                        {roster.length > 0 && incompleteStudents.length === 0 && (
                                             <div className="bg-green-100 p-2 text-center text-xs font-bold text-green-700 cursor-pointer hover:bg-green-200 transition-colors" onClick={() => handleApproveAll(task.id)}>
                                                 전체 승인 처리하기 (클릭)
                                             </div>

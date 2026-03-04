@@ -128,16 +128,15 @@ export const getRoster = (): ClassStudent[] => {
       return normalizeRoster(students);
   }
 
-  // If no stored data and no classId, check old key for migration
-  if (!classId) {
-    const oldStored = localStorage.getItem(LS_KEY);
-    if (oldStored) {
-      const students: ClassStudent[] = JSON.parse(oldStored);
-      return normalizeRoster(students);
-    }
+  // 기존 키(edu_class_roster)에 데이터 있으면 마이그레이션
+  const oldStored = localStorage.getItem(LS_KEY);
+  if (oldStored) {
+    const students: ClassStudent[] = JSON.parse(oldStored);
+    const normalized = normalizeRoster(students);
+    if (classId) saveRoster(normalized); // classId 있으면 새 키로 저장
+    return normalized;
   }
 
-  // If no stored data, return empty roster (no default samples for new accounts)
   return [];
 };
 
@@ -249,8 +248,11 @@ export const fetchRosterFromDb = async (): Promise<ClassStudent[]> => {
     gender: s.gender === 'male' || s.gender === 'female' ? s.gender : undefined,
   }));
   const normalized = normalizeRoster(mapped);
-  saveRoster(normalized);
-  return normalized;
+  // DB에 명부가 없을 때 기존 로컬 데이터 덮어쓰지 않음 (학생 이름 표시 유지)
+  if (normalized.length > 0) {
+    saveRoster(normalized);
+  }
+  return normalized.length > 0 ? normalized : getRoster();
 };
 
 export const fetchRosterByJoinCode = async (joinCode: string): Promise<ClassStudent[]> => {
