@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Home, Calendar, Plus, Check, CheckCircle2, Circle, Trash2, UserCheck, ShieldCheck, Lock, RotateCcw, AlertTriangle, ArrowRight, XCircle, Star } from 'lucide-react';
+import { Home, Calendar, Plus, Check, CheckCircle2, Circle, Trash2, UserCheck, ShieldCheck, Lock, RotateCcw, AlertTriangle, ArrowRight, XCircle, Star, Save } from 'lucide-react';
 import * as todoService from '../services/todoService';
 import * as studentService from '../services/studentService';
 import { TodoTask, TodoRecord, Participant, TodoStatus } from '../types';
@@ -29,15 +29,17 @@ export const TodoApp: React.FC<TodoAppProps> = ({ onBack, isTeacherMode, student
   
   // Roster state
   const [roster, setRoster] = useState<{id: string, name: string, pureName: string}[]>([]);
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
 
-  // Load data
+  // Load data (Supabase 연동: 먼저 로드 후 loadData)
   useEffect(() => {
     const init = async () => {
       try { await studentService.fetchRosterFromDb(); } catch {}
+      try { await todoService.loadTodoDataAsync(); } catch {}
       setRoster(todoService.getRoster());
+      loadData();
     };
     init();
-    loadData();
   }, [currentDate]);
 
   // Teacher Real-time Polling (Auto-refresh every 2 seconds to see students disappearing)
@@ -102,6 +104,17 @@ export const TodoApp: React.FC<TodoAppProps> = ({ onBack, isTeacherMode, student
     if (!confirm('제출한 모든 학생을 승인하시겠습니까?')) return;
     todoService.approveAllForTask(taskId);
     loadData();
+  };
+
+  const handleSaveTask = async (taskId: string) => {
+    setSavingTaskId(taskId);
+    try {
+      const ok = await todoService.saveTodoDataToSupabase();
+      if (ok) alert('저장되었습니다.');
+      else alert('저장에 실패했습니다. 네트워크를 확인해주세요.');
+    } finally {
+      setSavingTaskId(null);
+    }
   };
 
   // Toggle status for teacher dashboard (Incomplete -> Done)
@@ -333,16 +346,21 @@ export const TodoApp: React.FC<TodoAppProps> = ({ onBack, isTeacherMode, student
                                             )}
                                         </div>
 
-                                        {/* Footer: Stats */}
-                                        <div className="bg-gray-50 p-3 border-t border-gray-100 flex justify-between items-center text-xs font-bold text-gray-500">
-                                            <div className="flex items-center gap-1">
-                                                <UserCheck size={14} className="text-green-600"/>
-                                                <span className="text-green-700">{completedCount}명 완료</span>
+                                        {/* Footer: Stats + Save */}
+                                        <div className="bg-gray-50 p-3 border-t border-gray-100 flex justify-between items-center gap-2">
+                                            <div className="flex items-center gap-3 text-xs font-bold text-gray-500">
+                                                <span className="flex items-center gap-1 text-green-700"><UserCheck size={14} className="text-green-600"/>{completedCount}명 완료</span>
+                                                <span className="flex items-center gap-1 text-red-500"><XCircle size={14} className="text-red-400"/>{incompleteStudents.length}명 미완료</span>
                                             </div>
-                                            <div className="flex items-center gap-1">
-                                                <XCircle size={14} className="text-red-400"/>
-                                                <span className="text-red-500">{incompleteStudents.length}명 미완료</span>
-                                            </div>
+                                            <button 
+                                                onClick={() => handleSaveTask(task.id)}
+                                                disabled={savingTaskId === task.id}
+                                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 text-xs font-bold transition-colors disabled:opacity-50"
+                                                title="Supabase에 저장"
+                                            >
+                                                <Save size={14} />
+                                                {savingTaskId === task.id ? '저장 중...' : '저장'}
+                                            </button>
                                         </div>
                                         
                                         {incompleteStudents.length === 0 && (

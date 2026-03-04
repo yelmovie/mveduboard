@@ -33,6 +33,7 @@ export const collectStudentReportData = async (
   period: ReportPeriod = 'year'
 ): Promise<StudentReportViewData> => {
   const roster = await studentService.fetchRosterFromDb();
+  await todoService.loadTodoDataAsync();
   const student = roster.find((s) => s.id === studentId);
   if (!student) {
     throw new Error('학생을 찾을 수 없습니다.');

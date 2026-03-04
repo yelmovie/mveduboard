@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Home, ChevronLeft, ChevronRight, Plus, Trash2, CalendarDays, CalendarRange, ListTodo, Check, Clock, Printer, X, Maximize2, Minimize2, BookMarked, Users, BookOpen, FileText, Sun, Cloud, CloudRain, Snowflake, CheckCircle2, Save, MoreHorizontal, CheckSquare, Edit3, Grid, Paintbrush, Eraser, Phone, MessageCircle, MapPin, Search } from 'lucide-react';
+import { Home, ChevronLeft, ChevronRight, Plus, Trash2, CalendarDays, CalendarRange, ListTodo, Check, Clock, Printer, X, Maximize2, Minimize2, BookMarked, Users, BookOpen, FileText, Sun, Cloud, CloudRain, Snowflake, CheckCircle2, Save, MoreHorizontal, CheckSquare, Edit3, Grid, Paintbrush, Eraser, Phone, MessageCircle, MapPin, Search, Upload, Eye, Download } from 'lucide-react';
 import { Participant, ScheduleItem, ScheduleItemType, ClassStudent } from '../types';
 import * as scheduleService from '../services/scheduleService';
 import * as studentService from '../services/studentService';
+import * as handbookFileService from '../services/handbookFileService';
 import { generateUUID } from '../src/utils/uuid';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -344,7 +345,7 @@ export const ScheduleApp: React.FC<ScheduleAppProps> = ({ onBack, isTeacherMode,
                           </div>
                       )}
                       {/* Teacher Components */}
-                      {isTeacherMode && activeTab === 'yearly' && <TeacherYearlyRight onRegisterSave={registerSaveHandler} />}
+                      {isTeacherMode && activeTab === 'yearly' && <TeacherYearlyRight onRegisterSave={registerSaveHandler} isTeacherMode={true} />}
                       {isTeacherMode && activeTab === 'monthly' && <MonthlyRight studentId={studentId} currentDate={currentDate} onRefresh={refresh} onRegisterSave={registerSaveHandler} />}
                       {isTeacherMode && activeTab === 'daily' && <DailyRight currentDate={currentDate} studentId={studentId} onRefresh={refresh} isTeacherMode={true} onRegisterSave={registerSaveHandler} />}
                       {isTeacherMode && activeTab === 'roster' && <RosterRight roster={roster} onRegisterSave={registerSaveHandler} />}
@@ -353,7 +354,12 @@ export const ScheduleApp: React.FC<ScheduleAppProps> = ({ onBack, isTeacherMode,
                       {isTeacherMode && activeTab === 'log' && <LogRight currentDate={currentDate} studentId={studentId} onRefresh={refresh} onRegisterSave={registerSaveHandler} />}
 
                       {/* Student Components */}
-                      {!isTeacherMode && activeTab === 'yearly' && <StudentYearlyRight studentId={studentId} currentDate={currentDate} onRefresh={refresh} onRegisterSave={registerSaveHandler} />}
+                      {!isTeacherMode && activeTab === 'yearly' && (
+                        <>
+                          <HandbookFileSection isTeacherMode={false} />
+                          <StudentYearlyRight studentId={studentId} currentDate={currentDate} onRefresh={refresh} onRegisterSave={registerSaveHandler} />
+                        </>
+                      )}
                       {!isTeacherMode && activeTab === 'monthly' && <StudentMonthlyRight studentId={studentId} currentDate={currentDate} onRefresh={refresh} onRegisterSave={registerSaveHandler} />}
                       {!isTeacherMode && activeTab === 'weekly' && <StudentWeeklyRight studentId={studentId} currentDate={currentDate} onRefresh={refresh} onRegisterSave={registerSaveHandler} />}
                       {!isTeacherMode && activeTab === 'daily' && <DailyRight currentDate={currentDate} studentId={studentId} onRefresh={refresh} isTeacherMode={false} onRegisterSave={registerSaveHandler} />}
@@ -740,7 +746,119 @@ const LeftPageContent = (props: any) => {
 
 // --- RIGHT PAGE COMPONENTS ---
 
-const TeacherYearlyRight = ({ onRegisterSave }: { onRegisterSave?: (key: string, handler: () => void) => () => void }) => {
+const HANDBOOK_FILE_CONFIG: { type: handbookFileService.HandbookFileType; label: string }[] = [
+  { type: 'academic_schedule_1', label: '학사일정 1학기' },
+  { type: 'academic_schedule_2', label: '학사일정 2학기' },
+  { type: 'annual_timetable', label: '연간시간표' },
+  { type: 'class_hour_1', label: '시수표 1학기' },
+  { type: 'class_hour_2', label: '시수표 2학기' },
+  { type: 'progress_chart', label: '진도표' },
+];
+
+const HandbookFileSection = ({ isTeacherMode }: { isTeacherMode: boolean }) => {
+  const [files, setFiles] = useState<handbookFileService.HandbookFilesData>({});
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState<handbookFileService.HandbookFileType | null>(null);
+  const [viewFile, setViewFile] = useState<{ type: handbookFileService.HandbookFileType; item: handbookFileService.HandbookFileItem } | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    const data = await handbookFileService.getHandbookFilesAsync();
+    setFiles(data);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleUpload = async (type: handbookFileService.HandbookFileType, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(type);
+    try {
+      await handbookFileService.uploadHandbookFile(type, file);
+      await load();
+    } catch (err: any) {
+      alert(err?.message || '업로드에 실패했습니다.');
+    } finally {
+      setUploading(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleDelete = async (type: handbookFileService.HandbookFileType) => {
+    if (!confirm('등록된 파일을 삭제할까요?')) return;
+    try {
+      await handbookFileService.deleteHandbookFile(type);
+      await load();
+      setViewFile(null);
+    } catch (err: any) {
+      alert(err?.message || '삭제에 실패했습니다.');
+    }
+  };
+
+  return (
+    <div className="mb-6">
+      <h3 className="text-lg font-bold text-stone-700 mb-3 flex items-center gap-2"><FileText size={20}/> 교무 문서 {isTeacherMode ? '파일' : ''}</h3>
+      {loading ? (
+        <div className="text-stone-500 text-sm py-4">로딩 중...</div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {HANDBOOK_FILE_CONFIG.map(({ type, label }) => {
+            const item = files[type];
+            return (
+              <div key={type} className="bg-white border border-stone-200 rounded-xl p-3 shadow-sm">
+                <div className="text-xs font-bold text-stone-600 mb-2">{label}</div>
+                {item?.fileUrl ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setViewFile({ type, item })}
+                      className="flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-2 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold hover:bg-rose-100"
+                    >
+                      <Eye size={14}/> 보기
+                    </button>
+                    <a href={item.fileUrl} download className="flex items-center justify-center gap-1 px-2 py-2 bg-stone-100 text-stone-700 rounded-lg text-xs font-bold hover:bg-stone-200">
+                      <Download size={14}/>
+                    </a>
+                    {isTeacherMode && (
+                      <button onClick={() => handleDelete(type)} className="px-2 py-2 text-red-500 hover:bg-red-50 rounded-lg text-xs">
+                        <Trash2 size={14}/>
+                      </button>
+                    )}
+                  </div>
+                ) : isTeacherMode ? (
+                  <label className="flex items-center justify-center gap-1 px-3 py-2 bg-stone-100 hover:bg-stone-200 rounded-lg text-xs font-bold text-stone-600 cursor-pointer">
+                    <Upload size={14}/> {uploading === type ? '업로드 중...' : '파일 올리기'}
+                    <input type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" className="hidden" onChange={(e) => handleUpload(type, e)} disabled={!!uploading} />
+                  </label>
+                ) : (
+                  <div className="text-xs text-stone-400 py-2">등록된 파일 없음</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {viewFile && (
+        <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4" onClick={() => setViewFile(null)}>
+          <div className="bg-white max-w-4xl max-h-[90vh] w-full rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-3 bg-stone-100 flex justify-between items-center">
+              <span className="font-bold text-stone-800">{HANDBOOK_FILE_CONFIG.find(c => c.type === viewFile.type)?.label}</span>
+              <button onClick={() => setViewFile(null)} className="p-2 hover:bg-stone-200 rounded-lg"><X size={20}/></button>
+            </div>
+            <div className="p-4 bg-stone-50 min-h-[60vh] flex items-center justify-center">
+              {viewFile.item.fileType === 'pdf' ? (
+                <iframe src={viewFile.item.fileUrl} className="w-full h-[70vh] rounded-lg" title="PDF 뷰어" />
+              ) : (
+                <img src={viewFile.item.fileUrl} alt="" className="max-w-full max-h-[75vh] object-contain rounded-lg" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TeacherYearlyRight = ({ onRegisterSave, isTeacherMode }: { onRegisterSave?: (key: string, handler: () => void) => () => void; isTeacherMode?: boolean }) => {
     const [semester, setSemester] = useState<1 | 2>(1);
     const [isFullEdit, setIsFullEdit] = useState(false);
     
@@ -777,8 +895,9 @@ const TeacherYearlyRight = ({ onRegisterSave }: { onRegisterSave?: (key: string,
     }, [onRegisterSave, handleQuickSave]);
 
     return (
-        <div className="h-full flex flex-col items-center justify-center p-4">
-            <div className="text-center space-y-6">
+        <div className="h-full flex flex-col p-4 overflow-y-auto">
+            <HandbookFileSection isTeacherMode={isTeacherMode ?? true} />
+            <div className="text-center space-y-6 mt-4">
                 <h2 className="text-2xl font-bold text-stone-700">{semester}학기 학사일정 및 시수표</h2>
                 <div className="flex justify-center gap-4">
                     <button onClick={() => setSemester(1)} className={`px-6 py-2 rounded-xl font-bold border-2 ${semester===1 ? 'bg-rose-100 border-rose-400 text-rose-800' : 'bg-white border-stone-200 text-stone-500'}`}>1학기</button>
