@@ -58,6 +58,7 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
   const [showConfetti, setShowConfetti] = useState(false);
   const [revealedSeats, setRevealedSeats] = useState<Set<number>>(new Set());
   const shuffleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dragSourceIndex, setDragSourceIndex] = useState<number | null>(null);
 
   const currentStudentName = studentName?.trim();
 
@@ -196,6 +197,40 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
       setTempSeatMap(newMap);
   };
 
+  const handleSeatDragStart = (e: React.DragEvent, idx: number) => {
+    if (!layout || isShuffling) return;
+    const seatStudent = layout.assignments[idx];
+    if (!seatStudent) return;
+    setDragSourceIndex(idx);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+    e.dataTransfer.setData('application/json', JSON.stringify(seatStudent));
+  };
+
+  const handleSeatDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleSeatDrop = (e: React.DragEvent, targetIdx: number) => {
+    e.preventDefault();
+    if (dragSourceIndex === null || !layout || isShuffling) return;
+    const seatMap = layout.seatMap || Array(layout.rows * layout.cols).fill(true);
+    if (!seatMap[targetIdx]) return;
+    const newAssignments = [...layout.assignments];
+    const src = newAssignments[dragSourceIndex];
+    const tgt = newAssignments[targetIdx];
+    newAssignments[dragSourceIndex] = tgt;
+    newAssignments[targetIdx] = src;
+    const newLayout = seatService.saveSeatLayout(layout.rows, layout.cols, newAssignments, seatMap);
+    setLayout(newLayout);
+    setDragSourceIndex(null);
+  };
+
+  const handleSeatDragEnd = () => {
+    setDragSourceIndex(null);
+  };
+
   return (
     <div className="min-h-screen bg-amber-50 flex flex-col font-sans">
       <header className="bg-white shadow-sm p-4 flex justify-between items-center sticky top-0 z-10">
@@ -305,6 +340,9 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
                          <div className="w-full bg-black/80 text-white text-center py-2 rounded-lg mb-8 max-w-md shadow-md">
                              교탁 / 칠판
                          </div>
+                         {isTeacherMode && !isShuffling && (
+                           <p className="text-sm text-amber-700 mb-4 font-medium">학생 이름을 드래그하여 자리 변경</p>
+                         )}
 
                          {isShuffling && (
                            <div className="mb-6 text-center">
@@ -334,15 +372,25 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
                                  const isRevealed = !isShuffling || revealedSeats.has(idx);
                                  const isJustRevealed = isShuffling && revealedSeats.has(idx);
 
+                                 const isDraggable = isTeacherMode && !isShuffling && !!seatStudent;
+                                 const isDragging = dragSourceIndex === idx;
+
                                  return (
                                      <div 
                                         key={idx} 
+                                        draggable={isDraggable}
+                                        onDragStart={isDraggable ? (e) => handleSeatDragStart(e, idx) : undefined}
+                                        onDragOver={isTeacherMode && !isShuffling ? handleSeatDragOver : undefined}
+                                        onDrop={isTeacherMode && !isShuffling ? (e) => handleSeatDrop(e, idx) : undefined}
+                                        onDragEnd={handleSeatDragEnd}
                                         className={`
                                             aspect-[4/3] rounded-xl flex flex-col items-center justify-center p-2 shadow-sm border-b-4 transition-all duration-300
                                         ${seatStudent ? 'bg-white border-amber-200' : 'bg-white/50 border-gray-200 border-dashed'}
                                         ${isCurrentSeat ? 'ring-4 ring-sky-300 bg-sky-100 border-sky-400 shadow-md' : ''}
                                         ${isJustRevealed ? 'scale-110 ring-4 ring-amber-400 shadow-lg bg-amber-50 border-amber-400' : ''}
                                         ${isShuffling && !isRevealed && seatStudent ? 'bg-amber-100/80' : ''}
+                                        ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}
+                                        ${isDragging ? 'opacity-50 scale-95' : ''}
                                         `}
                                         style={isJustRevealed ? { animation: 'seat-pop 0.4s ease-out' } : undefined}
                                      >
