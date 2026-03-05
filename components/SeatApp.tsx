@@ -65,6 +65,7 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
   useEffect(() => {
     const init = async () => {
       try { await studentService.fetchRosterFromDb(); } catch {}
+      try { await seatService.loadSeatDataAsync(); } catch {}
       const saved = seatService.getSeatLayout();
       if (saved) {
           setLayout(saved);

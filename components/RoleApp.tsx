@@ -29,6 +29,7 @@ export const RoleApp: React.FC<RoleAppProps> = ({ onBack, isTeacherMode }) => {
     try {
       await studentService.fetchRosterFromDb();
     } catch { /* fallback to localStorage */ }
+    try { await roleService.loadRoleDataAsync(); } catch {}
     const d = roleService.getRoleData();
     setData(d);
     setRoleInput(d.roles.map(r => r.title).join('\n'));

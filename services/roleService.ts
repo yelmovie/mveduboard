@@ -2,6 +2,7 @@
 import { RoleData, RoleItem, RoleStudent, RoleAssignment, RoleHistory } from '../types';
 import * as studentService from './studentService';
 import { generateUUID } from '../src/utils/uuid';
+import { loadWithSupabaseFallback, saveClassColumn } from '../lib/classDataSync';
 
 const LS_KEY = 'edu_role_data';
 
@@ -89,6 +90,20 @@ export const getRoleData = (): RoleData => {
 
 export const saveData = (data: RoleData) => {
   localStorage.setItem(LS_KEY, JSON.stringify(data));
+  saveClassColumn('role_data', data).catch(() => {});
+};
+
+export const loadRoleDataAsync = async (): Promise<void> => {
+  await loadWithSupabaseFallback<RoleData>(
+    'role_data',
+    () => {
+      const s = localStorage.getItem(LS_KEY);
+      if (!s) return { students: [], roles: [], currentAssignments: [], history: [] };
+      try { return JSON.parse(s); } catch { return { students: [], roles: [], currentAssignments: [], history: [] }; }
+    },
+    (d) => localStorage.setItem(LS_KEY, JSON.stringify(d)),
+    (d) => !d || (!d.roles?.length && !d.students?.length)
+  );
 };
 
 export const resetData = () => {

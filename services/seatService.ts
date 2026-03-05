@@ -2,6 +2,7 @@
 import { SeatLayout, SeatStudent } from '../types';
 import * as studentService from './studentService';
 import { generateUUID } from '../src/utils/uuid';
+import { loadWithSupabaseFallback, saveClassColumn } from '../lib/classDataSync';
 
 const LS_KEY = 'edu_seat_layout';
 const INIT_KEY = 'edu_seat_initialized';
@@ -57,7 +58,25 @@ export const saveSeatLayout = (rows: number, cols: number, assignments: (SeatStu
     updatedAt: new Date().toISOString(),
   };
   localStorage.setItem(LS_KEY, JSON.stringify(layout));
+  saveClassColumn('seat_data', layout).catch(() => {});
   return layout;
+};
+
+export const loadSeatDataAsync = async (): Promise<void> => {
+  const loaded = await loadWithSupabaseFallback<SeatLayout | null>(
+    'seat_data',
+    () => {
+      initializeSeat();
+      const s = localStorage.getItem(LS_KEY);
+      return s ? JSON.parse(s) : null;
+    },
+    (d) => { if (d) { localStorage.setItem(LS_KEY, JSON.stringify(d)); localStorage.setItem(INIT_KEY, 'true'); } },
+    (d) => !d || !d.assignments
+  );
+  if (loaded && loaded.seatMap === undefined && loaded.rows && loaded.cols) {
+    loaded.seatMap = Array(loaded.rows * loaded.cols).fill(true);
+    localStorage.setItem(LS_KEY, JSON.stringify(loaded));
+  }
 };
 
 const getHistory = (): SeatLayout[] => {

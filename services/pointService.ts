@@ -1,6 +1,7 @@
 
 import { PointStudent } from '../types';
 import * as studentService from './studentService';
+import { loadWithSupabaseFallback, saveClassColumn } from '../lib/classDataSync';
 
 const LS_KEY = 'edu_point_students';
 
@@ -59,6 +60,7 @@ export const getStudents = (): PointStudent[] => {
         avatarId: AVATAR_IDS[i % AVATAR_IDS.length],
       }));
       localStorage.setItem(LS_KEY, JSON.stringify(students));
+      syncPointsToSupabase(students);
   }
   return students;
 };
@@ -72,6 +74,7 @@ export const updatePoints = (studentIds: string[], amount: number, reason: strin
     return s;
   });
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncPointsToSupabase(updated);
   return updated;
 };
 
@@ -79,6 +82,7 @@ export const resetPoints = () => {
   const students = getStudents();
   const updated = students.map(s => ({ ...s, points: 0 }));
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncPointsToSupabase(updated);
   return updated;
 }
 

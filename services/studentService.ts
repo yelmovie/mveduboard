@@ -208,7 +208,18 @@ export const saveRosterToDb = async (students: ClassStudent[], classId: string) 
     });
     throw new Error(`저장 실패: ${insertError.message}`);
   }
+
+  // 이중 저장: classes.roster_data에 백업 (데이터 유실 방지)
+  const rosterPayload = normalized.map((s) => ({
+    id: s.id,
+    number: s.number,
+    name: s.name,
+    gender: s.gender,
+  }));
+  await supabase.from('classes').update({ roster_data: rosterPayload }).eq('id', classId);
+
   saveRoster(normalized);
+  cachedClassId = classId;
   return true;
 };
 
@@ -222,37 +233,57 @@ export const fetchRosterFromDb = async (): Promise<ClassStudent[]> => {
   const classId = profile?.class_id;
   if (!classId) return getRoster();
 
-  // classId 캐시에 반영하여 saveRoster/getRoster 키 일관성 확보
   cachedClassId = classId;
 
-  const { data, error } = await supabase
+  // 1) students 테이블에서 로드
+  const { data: studentsData, error } = await supabase
     .from('students')
     .select('id, name, student_no, gender')
     .eq('class_id', classId)
     .eq('created_by', userId)
     .order('student_no', { ascending: true });
-  if (error) {
-    console.error('[studentService] fetchRosterFromDb error', {
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
-    return getRoster();
+
+  if (!error && studentsData && studentsData.length > 0) {
+    const mapped: ClassStudent[] = studentsData.map((s, idx) => ({
+      id: s.id,
+      name: s.name,
+      number: s.student_no ?? idx + 1,
+      gender: s.gender === 'male' || s.gender === 'female' ? s.gender : undefined,
+    }));
+    const normalized = normalizeRoster(mapped);
+    saveRoster(normalized);
+    return normalized;
   }
 
-  const mapped: ClassStudent[] = (data || []).map((s, idx) => ({
-    id: s.id,
-    name: s.name,
-    number: s.student_no ?? idx + 1,
-    gender: s.gender === 'male' || s.gender === 'female' ? s.gender : undefined,
-  }));
-  const normalized = normalizeRoster(mapped);
-  // DB에 명부가 없을 때 기존 로컬 데이터 덮어쓰지 않음 (학생 이름 표시 유지)
-  if (normalized.length > 0) {
-    saveRoster(normalized);
+  if (error) {
+    console.error('[studentService] fetchRosterFromDb students error', {
+      code: error.code,
+      message: error.message,
+    });
   }
-  return normalized.length > 0 ? normalized : getRoster();
+
+  // 2) classes.roster_data 백업에서 로드 (데이터 유실 방지)
+  const { data: classRow } = await supabase
+    .from('classes')
+    .select('roster_data')
+    .eq('id', classId)
+    .maybeSingle();
+
+  const rosterData = classRow?.roster_data as Array<{ id: string; number: number; name: string; gender?: string }> | null;
+  if (rosterData && Array.isArray(rosterData) && rosterData.length > 0) {
+    const mapped: ClassStudent[] = rosterData.map((s) => ({
+      id: s.id || generateUUID(),
+      name: s.name,
+      number: s.number ?? 0,
+      gender: s.gender === 'male' || s.gender === 'female' ? s.gender : undefined,
+    }));
+    const normalized = normalizeRoster(mapped);
+    saveRoster(normalized);
+    return normalized;
+  }
+
+  // 3) 빈 데이터로 덮어쓰지 않음 - 기존 로컬 유지
+  return getRoster();
 };
 
 export const fetchRosterByJoinCode = async (joinCode: string): Promise<ClassStudent[]> => {

@@ -142,6 +142,10 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
       if (afterLeave) afterLeave();
   };
 
+  useEffect(() => {
+    messageService.loadMessageDataAsync().then(loadData).catch(() => loadData());
+  }, []);
+
   // Polling for updates
   useEffect(() => {
       loadData();

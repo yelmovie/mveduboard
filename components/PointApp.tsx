@@ -25,6 +25,7 @@ export const PointApp: React.FC<PointAppProps> = ({ onBack, isTeacherMode }) => 
           studentService.saveRoster(fetched);
         }
       } catch {}
+      try { await pointService.loadPointDataAsync(); } catch {}
       loadData();
     };
     init();

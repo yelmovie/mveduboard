@@ -375,6 +375,7 @@ export const MeetingApp: React.FC<MeetingAppProps> = ({ onBack, isTeacherMode, s
   useEffect(() => {
     const init = async () => {
       try { await studentService.fetchRosterFromDb(); } catch {}
+      try { await meetingService.loadMeetingDataAsync(); } catch {}
       setRoster(studentService.getRoster());
     };
     init();

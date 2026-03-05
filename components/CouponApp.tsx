@@ -37,6 +37,7 @@ export const CouponApp: React.FC<CouponAppProps> = ({ onBack, isTeacherMode, stu
       } catch {
         setRoster(studentService.getRoster());
       }
+      try { await couponService.loadCouponDataAsync(); } catch {}
     };
     init();
     loadCoupons();

@@ -2,6 +2,7 @@
 import { PrivateMessage } from '../types';
 import * as studentService from './studentService';
 import { generateUUID } from '../src/utils/uuid';
+import { loadWithSupabaseFallback, saveClassColumn } from '../lib/classDataSync';
 
 const LS_KEY = 'edu_private_messages';
 const INIT_KEY = 'edu_messages_initialized';
@@ -34,10 +35,27 @@ const initializeMessages = () => {
     }
 }
 
+const syncMessagesToSupabase = (msgs: PrivateMessage[]) => {
+  saveClassColumn('message_data', msgs).catch(() => {});
+};
+
 export const getAllMessages = (): PrivateMessage[] => {
   initializeMessages();
   const stored = localStorage.getItem(LS_KEY);
   return stored ? JSON.parse(stored) : [];
+};
+
+export const loadMessageDataAsync = async (): Promise<void> => {
+  await loadWithSupabaseFallback<PrivateMessage[]>(
+    'message_data',
+    () => {
+      initializeMessages();
+      const s = localStorage.getItem(LS_KEY);
+      return s ? JSON.parse(s) : [];
+    },
+    (d) => { localStorage.setItem(LS_KEY, JSON.stringify(d)); localStorage.setItem(INIT_KEY, 'true'); },
+    (d) => !Array.isArray(d) || d.length === 0
+  );
 };
 
 export const getMessagesForStudent = (studentName: string): PrivateMessage[] => {
@@ -60,7 +78,9 @@ export const sendMessage = (studentName: string, content: string, sender: 'teach
     timestamp: Date.now(),
     isRead: false,
   };
-  localStorage.setItem(LS_KEY, JSON.stringify([...all, newMessage]));
+  const updated = [...all, newMessage];
+  localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncMessagesToSupabase(updated);
   return newMessage;
 };
 
@@ -79,7 +99,9 @@ export const markAsRead = (studentName: string, viewerRole: 'teacher' | 'student
     return m;
   });
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncMessagesToSupabase(updated);
 };
+
 
 export const getUnreadCount = (studentName: string, viewerRole: 'teacher' | 'student'): number => {
     const messages = getMessagesForStudent(studentName);
@@ -96,6 +118,7 @@ export const clearMessagesForStudent = (studentName: string) => {
   const raw = studentName.trim();
   const filtered = all.filter(m => m.studentName !== normalized && (!raw || m.studentName !== raw));
   localStorage.setItem(LS_KEY, JSON.stringify(filtered));
+  syncMessagesToSupabase(filtered);
 };
 
 // Get combined list of default roster + any student who has sent a message

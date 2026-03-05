@@ -1,5 +1,6 @@
 import { Agenda, AgendaComment, AgendaStatus } from '../types';
 import { generateUUID } from '../src/utils/uuid';
+import { loadWithSupabaseFallback, saveClassColumn } from '../lib/classDataSync';
 
 const LS_KEY = 'edu_meeting_agendas';
 const INIT_KEY = 'edu_meeting_initialized';
@@ -15,6 +16,23 @@ const initializeMeeting = () => {
         localStorage.setItem(INIT_KEY, 'true');
     }
 }
+
+const syncAgendasToSupabase = (agendas: Agenda[]) => {
+  saveClassColumn('meeting_data', agendas).catch(() => {});
+};
+
+export const loadMeetingDataAsync = async (): Promise<void> => {
+  await loadWithSupabaseFallback<Agenda[]>(
+    'meeting_data',
+    () => {
+      initializeMeeting();
+      const s = localStorage.getItem(LS_KEY);
+      return s ? JSON.parse(s) : [];
+    },
+    (d) => { localStorage.setItem(LS_KEY, JSON.stringify(d)); localStorage.setItem(INIT_KEY, 'true'); },
+    (d) => !Array.isArray(d)
+  );
+};
 
 export const getAgendas = (): Agenda[] => {
   initializeMeeting();
@@ -36,7 +54,9 @@ export const createAgenda = (title: string, description: string, author: string)
     createdAt: new Date().toISOString(),
     votes: {}
   };
-  localStorage.setItem(LS_KEY, JSON.stringify([...agendas, newAgenda]));
+  const updated = [...agendas, newAgenda];
+  localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncAgendasToSupabase(updated);
   return newAgenda;
 };
 
@@ -44,12 +64,14 @@ export const updateAgendaStatus = (id: string, status: AgendaStatus, result?: st
   const agendas = getAgendas();
   const updated = agendas.map(a => a.id === id ? { ...a, status, result } : a);
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncAgendasToSupabase(updated);
 };
 
 export const toggleLike = (id: string) => {
   const agendas = getAgendas();
   const updated = agendas.map(a => a.id === id ? { ...a, likes: a.likes + 1 } : a);
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncAgendasToSupabase(updated);
 };
 
 export const voteAgenda = (agendaId: string, userId: string, voteType: 'agree' | 'disagree') => {
@@ -66,12 +88,14 @@ export const voteAgenda = (agendaId: string, userId: string, voteType: 'agree' |
         return a;
     });
     localStorage.setItem(LS_KEY, JSON.stringify(updated));
+    syncAgendasToSupabase(updated);
 };
 
 export const deleteAgenda = (id: string) => {
   const agendas = getAgendas();
   const updated = agendas.filter(a => a.id !== id);
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncAgendasToSupabase(updated);
 };
 
 export const setSecretary = (agendaId: string, secretaryId: string, secretaryName: string) => {
@@ -80,6 +104,7 @@ export const setSecretary = (agendaId: string, secretaryId: string, secretaryNam
     a.id === agendaId ? { ...a, secretaryId, secretaryName } : a
   );
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncAgendasToSupabase(updated);
 };
 
 export const updateNotes = (agendaId: string, notes: string) => {
@@ -88,6 +113,7 @@ export const updateNotes = (agendaId: string, notes: string) => {
     a.id === agendaId ? { ...a, notes } : a
   );
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncAgendasToSupabase(updated);
 };
 
 export const addComment = (agendaId: string, authorId: string, authorName: string, text: string) => {
@@ -103,6 +129,7 @@ export const addComment = (agendaId: string, authorId: string, authorName: strin
     a.id === agendaId ? { ...a, comments: [...(a.comments || []), comment] } : a
   );
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncAgendasToSupabase(updated);
 };
 
 export const deleteComment = (agendaId: string, commentId: string) => {
@@ -113,4 +140,5 @@ export const deleteComment = (agendaId: string, commentId: string) => {
       : a
   );
   localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  syncAgendasToSupabase(updated);
 };

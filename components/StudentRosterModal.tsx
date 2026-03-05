@@ -4,7 +4,7 @@ import { jsPDF } from 'jspdf';
 import { supabase } from '../src/lib/supabase/client';
 import * as studentService from '../services/studentService';
 import { ClassStudent } from '../types';
-import { getCurrentUserProfile, getSession } from '../src/lib/supabase/auth';
+import { getCurrentUserProfile } from '../src/lib/supabase/auth';
 import { generateUUID } from '../src/utils/uuid';
 import {
   parseCsvText,
@@ -36,41 +36,11 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
     const loadStudents = async () => {
       setLoading(true);
       try {
-        if (!supabase) {
-          setDraftStudents(studentService.getRoster());
-          return;
-        }
-        const session = await getSession();
-        const userId = session?.user?.id;
-        const profile = await getCurrentUserProfile();
-        const classId = profile?.class_id;
-        if (!userId || !classId) {
-          setDraftStudents(studentService.getRoster());
-          return;
-        }
-        const { data, error } = await supabase
-          .from('students')
-          .select('id, name, student_no, gender')
-          .eq('class_id', classId)
-          .eq('created_by', userId)
-          .order('student_no', { ascending: true });
-        if (error) {
-          console.error('[StudentRosterModal] load error', {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-          });
-          setDraftStudents(studentService.getRoster());
-          return;
-        }
-        const mapped = (data || []).map((s) => ({
-          id: s.id,
-          name: s.name,
-          number: s.student_no ?? undefined,
-          gender: s.gender === 'male' || s.gender === 'female' ? s.gender : undefined,
-        }));
-        setDraftStudents(studentService.normalizeRoster(mapped));
+        const loaded = await studentService.fetchRosterFromDb();
+        setDraftStudents(loaded);
+      } catch (e) {
+        console.error('[StudentRosterModal] load error', e);
+        setDraftStudents(studentService.getRoster());
       } finally {
         setLoading(false);
       }
