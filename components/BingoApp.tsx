@@ -263,7 +263,7 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
 
   // --- Handlers: Teacher Class Game ---
 
-  const handleCreateClassGame = () => {
+  const handleCreateClassGame = async () => {
     if (!form.title.trim()) {
         alert('빙고 제목을 입력해주세요.');
         return;

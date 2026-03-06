@@ -430,7 +430,6 @@ export const ScheduleApp: React.FC<ScheduleAppProps> = ({ onBack, isTeacherMode,
                         contactInfo={contactInfo}
                         onContactChange={(id, field, value) => setContactInfo(prev => ({ ...prev, [id]: { ...(prev[id] ?? { phone: '', motherPhone: '', fatherPhone: '', address: '' }), [field]: value } }))}
                         counselLogs={counselLogs}
-                        roster={roster}
                         exportDateFrom={exportDateFrom}
                         exportDateTo={exportDateTo}
                         exportItems={exportItems}
@@ -2093,8 +2092,6 @@ const ExportRight = ({
             y += 10;
         }
 
-        const from = new Date(exportDateFrom);
-        const to = new Date(exportDateTo);
         if (exportItems.counsel && counselLogs.length > 0) {
             const filtered = counselLogs.filter(l => {
                 const d = new Date(l.date);
