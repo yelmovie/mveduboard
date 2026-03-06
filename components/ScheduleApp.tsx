@@ -1,13 +1,16 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Home, ChevronLeft, ChevronRight, Plus, Trash2, CalendarDays, CalendarRange, ListTodo, Check, Clock, Printer, X, Maximize2, Minimize2, BookMarked, Users, BookOpen, FileText, Sun, Cloud, CloudRain, Snowflake, CheckCircle2, Save, MoreHorizontal, CheckSquare, Edit3, Grid, Paintbrush, Eraser, Phone, MessageCircle, MapPin, Search, Upload, Eye, Download } from 'lucide-react';
 import { Participant, ScheduleItem, ScheduleItemType, ClassStudent } from '../types';
 import * as scheduleService from '../services/scheduleService';
 import * as studentService from '../services/studentService';
 import * as handbookFileService from '../services/handbookFileService';
 import { generateUUID } from '../src/utils/uuid';
+import { supabase } from '../src/lib/supabase/client';
+import { getCurrentUserProfile } from '../src/lib/supabase/auth';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import * as XLSX from 'xlsx';
 
 interface ScheduleAppProps {
   onBack: () => void;
@@ -16,7 +19,9 @@ interface ScheduleAppProps {
   onLoginRequest: () => void;
 }
 
-type TabSection = 'yearly' | 'monthly' | 'weekly' | 'daily' | 'roster' | 'contact' | 'counsel' | 'log';
+type TabSection = 'yearly' | 'monthly' | 'weekly' | 'daily' | 'roster' | 'contact' | 'counsel' | 'log' | 'export';
+
+export type ContactInfoItem = { phone: string; motherPhone: string; fatherPhone: string; address: string };
 
 // --- Academic Calendar Types ---
 interface AcademicWeek {
@@ -54,20 +59,67 @@ export const ScheduleApp: React.FC<ScheduleAppProps> = ({ onBack, isTeacherMode,
   const studentId = isTeacherMode ? 'teacher' : (student ? student.id : 'guest');
   const [roster, setRoster] = useState<ClassStudent[]>(studentService.getRoster());
   const [rosterLoading, setRosterLoading] = useState(false);
+  const [contactInfo, setContactInfo] = useState<Record<string, ContactInfoItem>>({});
+  const [counselLogs, setCounselLogs] = useState<{ id: string; studentId: string; date: string; type: string; content: string }[]>([]);
+  const [exportDateFrom, setExportDateFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [exportDateTo, setExportDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [exportItems, setExportItems] = useState<Record<string, boolean>>({ roster: true, contact: true, counsel: true, log: true });
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingPdf, setIsSavingPdf] = useState(false);
-  const saveHandlersRef = useRef<Record<string, () => void>>({});
+  const saveHandlersRef = useRef<Record<string, () => void | Promise<void>>>({});
   const diaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const shouldLoad = isTeacherMode && ['roster', 'contact', 'counsel', 'log'].includes(activeTab);
     if (!shouldLoad) return;
     setRosterLoading(true);
-    studentService
-      .fetchRosterFromDb()
-      .then((data) => setRoster(data))
-      .finally(() => setRosterLoading(false));
+    (async () => {
+      try {
+        await studentService.preloadClassId();
+        const data = await studentService.fetchRosterFromDb();
+        setRoster(data);
+      } catch {
+        setRoster(studentService.getRoster());
+      } finally {
+        setRosterLoading(false);
+      }
+    })();
   }, [activeTab, isTeacherMode]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('edu_contact_info');
+      if (stored) {
+        const parsed = JSON.parse(stored) as Record<string, { phone?: string; parentPhone?: string; motherPhone?: string; fatherPhone?: string; address?: string }>;
+        const migrated: Record<string, ContactInfoItem> = {};
+        Object.keys(parsed).forEach((id) => {
+          const p = parsed[id];
+          migrated[id] = {
+            phone: p.phone ?? '',
+            motherPhone: p.motherPhone ?? p.parentPhone ?? '',
+            fatherPhone: p.fatherPhone ?? '',
+            address: p.address ?? '',
+          };
+        });
+        setContactInfo(migrated);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('edu_counsel_logs');
+      if (stored) setCounselLogs(JSON.parse(stored));
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // --- Handlers ---
   const handleDateChange = (offset: number) => {
@@ -110,17 +162,89 @@ export const ScheduleApp: React.FC<ScheduleAppProps> = ({ onBack, isTeacherMode,
     }
   };
 
-  const registerSaveHandler = (key: string, handler: () => void) => {
+  const registerSaveHandler = (key: string, handler: () => void | Promise<void>) => {
     saveHandlersRef.current[key] = handler;
     return () => {
       delete saveHandlersRef.current[key];
     };
   };
 
-  const handleSaveAll = () => {
+  // 명렬표(비고/형제자매) 저장 — 명부 탭일 때만 등록
+  const rosterRef = useRef(roster);
+  rosterRef.current = roster;
+  useEffect(() => {
+    if (activeTab !== 'roster' || !isTeacherMode) return;
+    const handler = async () => {
+      const list = rosterRef.current;
+      if (!list.length) return;
+      try {
+        const profile = await getCurrentUserProfile();
+        const classId = profile?.class_id;
+        if (classId) await studentService.saveRosterToDb(list, classId);
+      } catch (e) {
+        console.warn('[ScheduleApp] roster save failed', e);
+      }
+    };
+    return registerSaveHandler('roster-table', handler);
+  }, [activeTab, isTeacherMode, registerSaveHandler]);
+
+  const handleRosterDownloadPdf = useCallback(() => {
+    const list = rosterRef.current;
+    if (!list.length) {
+      alert('다운로드할 명단이 없습니다.');
+      return;
+    }
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const headers = ['No', '이름', '성별', '생년월일', '이전학년반', '형제자매', '비고'];
+    const colW = [12, 28, 18, 28, 28, 35, 45];
+    let y = 14;
+    headers.forEach((h, i) => doc.text(h, 14 + colW.slice(0, i).reduce((a, b) => a + b, 0), y));
+    y += 8;
+    list.forEach((s) => {
+      const row = [
+        String(s.number),
+        s.name,
+        s.gender === 'male' ? '남' : s.gender === 'female' ? '여' : '-',
+        s.birthDate ?? '-',
+        s.previousGradeClass ?? '-',
+        s.siblings ?? '-',
+        s.remarks ?? '-',
+      ];
+      row.forEach((cell, i) => doc.text(String(cell).slice(0, 20), 14 + colW.slice(0, i).reduce((a, b) => a + b, 0), y));
+      y += 6;
+    });
+    doc.save(`학급명렬표_${new Date().toISOString().slice(0, 10)}.pdf`);
+  }, []);
+
+  const handleRosterDownloadExcel = useCallback(() => {
+    const list = rosterRef.current;
+    if (!list.length) {
+      alert('다운로드할 명단이 없습니다.');
+      return;
+    }
+    const headers = ['No', '이름', '성별', '생년월일', '이전학년반', '형제자매', '비고'];
+    const rows = list.map((s) => [
+      s.number,
+      s.name,
+      s.gender === 'male' ? '남' : s.gender === 'female' ? '여' : '',
+      s.birthDate ?? '',
+      s.previousGradeClass ?? '',
+      s.siblings ?? '',
+      s.remarks ?? '',
+    ]);
+    const csv = [headers.join(','), ...rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `학급명렬표_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, []);
+
+  const handleSaveAll = async () => {
     setIsSaving(true);
     try {
-      Object.values(saveHandlersRef.current).forEach((handler) => handler());
+      await Promise.all(Object.values(saveHandlersRef.current).map((handler) => Promise.resolve(handler())));
       alert('저장되었습니다.');
     } finally {
       setIsSaving(false);
@@ -179,7 +303,7 @@ export const ScheduleApp: React.FC<ScheduleAppProps> = ({ onBack, isTeacherMode,
                     <div className={`absolute -bottom-4 right-12 w-10 h-28 rounded-b-lg shadow-md z-10 group-hover:h-32 transition-all ${isTeacherMode ? 'bg-red-700' : 'bg-blue-600'}`}></div>
                 </div>
                 <p className="mt-8 text-xs text-stone-500 text-center max-w-md">
-                    기록은 1년 단위로 자동 삭제됩니다. 필요한 내용은 미리 다운로드해 주세요.
+                    1년 단위 자료는 자동 삭제되지만, 자료는 PDF로 다운받아 보관할 수 있어요.
                 </p>
           </div>
       );
@@ -188,23 +312,24 @@ export const ScheduleApp: React.FC<ScheduleAppProps> = ({ onBack, isTeacherMode,
   // --- 2. OPEN BOOK VIEW ---
   const TABS = isTeacherMode 
     ? [
-        { id: 'yearly', label: '학사일정', color: 'bg-rose-500', icon: CalendarRange },
+        { id: 'yearly', label: '3종세트', color: 'bg-rose-500', icon: CalendarRange },
         { id: 'monthly', label: '월간', color: 'bg-orange-500', icon: CalendarDays },
         { id: 'daily', label: '일간', color: 'bg-emerald-500', icon: BookOpen },
         { id: 'roster', label: '명부', color: 'bg-blue-500', icon: Users },
         { id: 'contact', label: '주소록', color: 'bg-indigo-500', icon: Phone },
         { id: 'counsel', label: '상담/관찰', color: 'bg-teal-500', icon: MessageCircle },
         { id: 'log', label: '기록', color: 'bg-violet-500', icon: FileText },
+        { id: 'export', label: '기록저장인쇄', color: 'bg-slate-600', icon: Printer },
       ]
     : [
-        { id: 'yearly', label: '연간계획', color: 'bg-rose-500', icon: CalendarRange },
+        { id: 'yearly', label: '3종세트', color: 'bg-rose-500', icon: CalendarRange },
         { id: 'monthly', label: '월간목표', color: 'bg-orange-500', icon: CalendarDays },
         { id: 'weekly', label: '주간계획', color: 'bg-blue-500', icon: CalendarDays },
         { id: 'daily', label: '일일플래너', color: 'bg-emerald-500', icon: BookOpen },
       ];
 
   // Hide spring on Yearly tab for Teachers to allow full width tables
-  const showSpring = !(isTeacherMode && activeTab === 'yearly');
+  const showSpring = !(isTeacherMode && (activeTab === 'yearly'));
 
   return (
       <div className="min-h-screen bg-[#e2e8f0] flex flex-col items-center justify-center p-0 sm:p-4 font-sans relative overflow-hidden">
@@ -299,6 +424,19 @@ export const ScheduleApp: React.FC<ScheduleAppProps> = ({ onBack, isTeacherMode,
                         onRegisterSave={registerSaveHandler}
                         roster={roster}
                         rosterLoading={rosterLoading}
+                        onRosterUpdate={(id, field, value) => setRoster(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s))}
+                        onRosterDownloadPdf={handleRosterDownloadPdf}
+                        onRosterDownloadExcel={handleRosterDownloadExcel}
+                        contactInfo={contactInfo}
+                        onContactChange={(id, field, value) => setContactInfo(prev => ({ ...prev, [id]: { ...(prev[id] ?? { phone: '', motherPhone: '', fatherPhone: '', address: '' }), [field]: value } }))}
+                        counselLogs={counselLogs}
+                        roster={roster}
+                        exportDateFrom={exportDateFrom}
+                        exportDateTo={exportDateTo}
+                        exportItems={exportItems}
+                        onExportDateFromChange={setExportDateFrom}
+                        onExportDateToChange={setExportDateTo}
+                        onExportItemsChange={setExportItems}
                       />
                   </div>
               </div>
@@ -345,18 +483,29 @@ export const ScheduleApp: React.FC<ScheduleAppProps> = ({ onBack, isTeacherMode,
                           </div>
                       )}
                       {/* Teacher Components */}
-                      {isTeacherMode && activeTab === 'yearly' && <TeacherYearlyRight onRegisterSave={registerSaveHandler} isTeacherMode={true} />}
+                      {isTeacherMode && activeTab === 'yearly' && <ThreeSetSection isTeacherMode={true} />}
                       {isTeacherMode && activeTab === 'monthly' && <MonthlyRight studentId={studentId} currentDate={currentDate} onRefresh={refresh} onRegisterSave={registerSaveHandler} />}
                       {isTeacherMode && activeTab === 'daily' && <DailyRight currentDate={currentDate} studentId={studentId} onRefresh={refresh} isTeacherMode={true} onRegisterSave={registerSaveHandler} />}
                       {isTeacherMode && activeTab === 'roster' && <RosterRight roster={roster} onRegisterSave={registerSaveHandler} />}
-                      {isTeacherMode && activeTab === 'contact' && <ContactRight roster={roster} onRegisterSave={registerSaveHandler} />}
-                      {isTeacherMode && activeTab === 'counsel' && <CounselRight roster={roster} onRegisterSave={registerSaveHandler} />}
+                      {isTeacherMode && activeTab === 'contact' && <ContactRight roster={roster} contactInfo={contactInfo} onContactChange={(id, field, value) => setContactInfo(prev => ({ ...prev, [id]: { ...(prev[id] ?? { phone: '', motherPhone: '', fatherPhone: '', address: '' }), [field]: value } }))} onRegisterSave={registerSaveHandler} />}
+                      {isTeacherMode && activeTab === 'counsel' && <CounselRight roster={roster} counselLogs={counselLogs} setCounselLogs={setCounselLogs} onRegisterSave={registerSaveHandler} />}
                       {isTeacherMode && activeTab === 'log' && <LogRight currentDate={currentDate} studentId={studentId} onRefresh={refresh} onRegisterSave={registerSaveHandler} />}
+                      {isTeacherMode && activeTab === 'export' && (
+                        <ExportRight
+                          roster={roster}
+                          contactInfo={contactInfo}
+                          counselLogs={counselLogs}
+                          exportDateFrom={exportDateFrom}
+                          exportDateTo={exportDateTo}
+                          exportItems={exportItems}
+                          onPrint={handlePrint}
+                        />
+                      )}
 
                       {/* Student Components */}
                       {!isTeacherMode && activeTab === 'yearly' && (
                         <>
-                          <HandbookFileSection isTeacherMode={false} />
+                          <ThreeSetSection isTeacherMode={false} />
                           <StudentYearlyRight studentId={studentId} currentDate={currentDate} onRefresh={refresh} onRegisterSave={registerSaveHandler} />
                         </>
                       )}
@@ -402,8 +551,10 @@ const PageHeader = ({ title, subTitle, actions }: { title: string, subTitle?: st
 
 // --- LEFT PAGES ---
 
+export type CounselLogItem = { id: string; studentId: string; date: string; type: string; content: string };
+
 const LeftPageContent = (props: any) => {
-    const { tab, currentDate, studentId, refreshKey, onRefresh, onDateChange, isTeacherMode, onRegisterSave, roster, rosterLoading } = props;
+    const { tab, currentDate, studentId, refreshKey, onRefresh, onDateChange, isTeacherMode, onRegisterSave, roster, rosterLoading, onRosterUpdate, onRosterDownloadPdf, onRosterDownloadExcel, contactInfo = {}, onContactChange, counselLogs = [], exportDateFrom = '', exportDateTo = '', exportItems = {}, onExportDateFromChange, onExportDateToChange, onExportItemsChange } = props;
     type DailyLessonRow = {
         period: number;
         subject: string;
@@ -414,17 +565,16 @@ const LeftPageContent = (props: any) => {
 
     // YEARLY LEFT (Teacher)
     if (tab === 'yearly' && isTeacherMode) {
-        const year = currentDate.getFullYear();
         return (
             <div className="h-full flex flex-col justify-center items-center text-center p-8 border-4 border-double border-stone-200 rounded-2xl bg-white">
-                <h3 className="text-3xl font-black text-stone-700 mb-4">{year}학년도 학사일정</h3>
+                <h3 className="text-3xl font-black text-stone-700 mb-4">3종세트</h3>
                 <p className="text-stone-500 mb-8 font-serif leading-relaxed">
-                    22주간의 수업 일수, 주간 계획,<br/>
-                    비고 사항을 한눈에 관리하세요.
+                    연간계획표, 진도표, 시수표를<br/>
+                    올리고 바로 볼 수 있어요.
                 </p>
                 <div className="bg-stone-50 p-6 rounded-xl border border-stone-200 mb-6">
                     <Grid size={48} className="text-rose-400 mx-auto mb-2" />
-                    <p className="text-sm text-stone-600 font-bold">오른쪽 페이지에서<br/>[전체화면 편집]을 눌러주세요.</p>
+                    <p className="text-sm text-stone-600 font-bold">오른쪽에서 탭을 선택한 뒤<br/>파일을 올려주세요.</p>
                 </div>
             </div>
         );
@@ -621,7 +771,7 @@ const LeftPageContent = (props: any) => {
 
                 {isTeacherMode && (
                     <p className="text-xs text-stone-500 mb-4">
-                        저장된 내용은 1년 단위로 자동 삭제됩니다.
+                        1년 단위 자료는 자동 삭제되지만, 자료는 PDF로 다운받아 보관할 수 있어요.
                     </p>
                 )}
                 
@@ -699,38 +849,174 @@ const LeftPageContent = (props: any) => {
         )
     }
 
+    // CONTACT LEFT (Teacher) — 왼쪽 페이지: 이름, 학생, 모, 부
+    if (tab === 'contact' && isTeacherMode) {
+        return (
+            <div className="h-full flex flex-col">
+                <PageHeader title="주소록" subTitle="학생 · 모 · 부 연락처" />
+                <div className="overflow-y-auto border border-indigo-200 rounded-lg flex-1 min-h-0">
+                    <table className="w-full text-sm">
+                        <thead className="bg-indigo-50 sticky top-0">
+                            <tr>
+                                <th className="p-2 border-b border-indigo-200 w-20">이름</th>
+                                <th className="p-2 border-b border-indigo-200">학생</th>
+                                <th className="p-2 border-b border-indigo-200">모</th>
+                                <th className="p-2 border-b border-indigo-200">부</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {roster.map(s => (
+                                <tr key={s.id} className="border-b border-indigo-100 hover:bg-indigo-50/30">
+                                    <td className="p-2 font-bold text-stone-800">{s.name}</td>
+                                    <td className="p-2">
+                                        <input className="w-full bg-transparent outline-none text-center border-b border-transparent hover:border-indigo-200 focus:border-indigo-400 rounded px-1 py-0.5" placeholder="학생 연락처" value={contactInfo[s.id]?.phone ?? ''} onChange={e => onContactChange?.(s.id, 'phone', e.target.value)} />
+                                    </td>
+                                    <td className="p-2">
+                                        <input className="w-full bg-transparent outline-none text-center border-b border-transparent hover:border-indigo-200 focus:border-indigo-400 rounded px-1 py-0.5" placeholder="모 연락처" value={contactInfo[s.id]?.motherPhone ?? ''} onChange={e => onContactChange?.(s.id, 'motherPhone', e.target.value)} />
+                                    </td>
+                                    <td className="p-2">
+                                        <input className="w-full bg-transparent outline-none text-center border-b border-transparent hover:border-indigo-200 focus:border-indigo-400 rounded px-1 py-0.5" placeholder="부 연락처" value={contactInfo[s.id]?.fatherPhone ?? ''} onChange={e => onContactChange?.(s.id, 'fatherPhone', e.target.value)} />
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
+    // COUNSEL LEFT (Teacher) — 상담/관찰 기록 목록
+    if (tab === 'counsel' && isTeacherMode) {
+        const getName = (id: string) => roster.find(s => s.id === id)?.name ?? '-';
+        return (
+            <div className="h-full flex flex-col min-h-0">
+                <PageHeader title="상담/관찰 기록" subTitle={`총 ${counselLogs.length}건`} />
+                <div className="flex-1 overflow-y-auto border border-teal-200 rounded-lg bg-white/80 min-h-0">
+                    {counselLogs.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-stone-500 py-12 px-4">
+                            <MessageCircle size={40} className="mb-3 opacity-50" />
+                            <p className="text-sm font-medium">기록이 없습니다.</p>
+                            <p className="text-xs mt-1">오른쪽 페이지에서 상담/관찰을 기록해주세요.</p>
+                        </div>
+                    ) : (
+                        <ul className="divide-y divide-teal-100 p-2">
+                            {counselLogs.map((log) => (
+                                <li key={log.id} className="py-3 px-2 hover:bg-teal-50/50 rounded-lg transition-colors">
+                                    <div className="flex flex-wrap gap-1.5 mb-1">
+                                        <span className="font-bold text-stone-800">{getName(log.studentId)}</span>
+                                        <span className="text-xs text-stone-500">{log.date}</span>
+                                        <span className={`text-xs px-2 py-0.5 rounded ${log.type === '상담' ? 'bg-blue-100 text-blue-700' : log.type === '관찰' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>{log.type}</span>
+                                    </div>
+                                    <p className="text-sm text-stone-600 line-clamp-2 whitespace-pre-wrap">{log.content}</p>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // EXPORT LEFT (Teacher) — 날짜·항목 선택
+    if (tab === 'export' && isTeacherMode) {
+        const items = [
+            { id: 'roster', label: '명부' },
+            { id: 'contact', label: '주소록' },
+            { id: 'counsel', label: '상담/관찰' },
+            { id: 'log', label: '기록' },
+        ];
+        return (
+            <div className="h-full flex flex-col min-h-0">
+                <PageHeader title="기록저장인쇄" subTitle="날짜별 · 항목별 다운로드" />
+                <div className="space-y-6">
+                    <div>
+                        <p className="text-sm font-bold text-stone-600 mb-2">날짜 범위</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <input type="date" value={exportDateFrom} onChange={e => onExportDateFromChange?.(e.target.value)} className="border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm" />
+                            <span className="text-stone-500">~</span>
+                            <input type="date" value={exportDateTo} onChange={e => onExportDateToChange?.(e.target.value)} className="border border-stone-300 rounded-lg px-3 py-2 font-mono text-sm" />
+                        </div>
+                    </div>
+                    <div>
+                        <p className="text-sm font-bold text-stone-600 mb-2">항목 선택</p>
+                        <div className="flex flex-col gap-2">
+                            {items.map(({ id, label }) => (
+                                <label key={id} className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={!!exportItems[id]} onChange={e => onExportItemsChange?.({ ...exportItems, [id]: e.target.checked })} className="w-4 h-4 accent-slate-600 rounded" />
+                                    <span className="text-sm font-medium text-stone-700">{label}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     // OTHER TABS (Teacher Only)
     if (['roster', 'contact', 'log', 'counsel'].includes(tab) && isTeacherMode) {
-        // Reuse similar logic or render placeholders if left page content isn't critical for these
-        // For simplicity, reusing a summary view
         if (tab === 'roster') {
             return (
-                <div className="h-full flex flex-col">
-                    <PageHeader title="학급 명렬표" subTitle={`총 ${roster.length}명`} />
-                    <div className="overflow-y-auto border border-stone-300 rounded-lg">
-                        <table className="w-full text-base">
+                <div className="h-full flex flex-col min-h-0">
+                    <PageHeader
+                        title="학급 명렬표"
+                        subTitle={`총 ${roster.length}명`}
+                        actions={
+                            <div className="flex gap-2 no-print">
+                                <button type="button" onClick={onRosterDownloadPdf} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold text-sm">
+                                    <FileText size={16} /> PDF
+                                </button>
+                                <button type="button" onClick={onRosterDownloadExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-sm">
+                                    <Download size={16} /> 엑셀
+                                </button>
+                            </div>
+                        }
+                    />
+                    <div className="overflow-x-auto overflow-y-auto border border-stone-300 rounded-lg flex-1 min-h-0">
+                        <table className="w-full text-base min-w-max">
                             <thead className="bg-stone-100">
                                 <tr>
-                                    <th className="p-3 border-b">No</th>
-                                    <th className="p-3 border-b text-left">이름</th>
-                                    <th className="p-3 border-b">성별</th>
-                                    <th className="p-3 border-b">비고</th>
+                                    <th className="p-2 border-b whitespace-nowrap">No</th>
+                                    <th className="p-2 border-b text-left whitespace-nowrap">이름</th>
+                                    <th className="p-2 border-b whitespace-nowrap">성별</th>
+                                    <th className="p-2 border-b whitespace-nowrap">생년월일</th>
+                                    <th className="p-2 border-b whitespace-nowrap">이전학년반</th>
+                                    <th className="p-2 border-b whitespace-nowrap">형제자매</th>
+                                    <th className="p-2 border-b whitespace-nowrap">비고</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {rosterLoading && (
                                     <tr>
-                                        <td colSpan={4} className="p-4 text-center text-stone-400">불러오는 중...</td>
+                                        <td colSpan={7} className="p-4 text-center text-stone-400">불러오는 중...</td>
                                     </tr>
                                 )}
-                                {roster.map(s => (
+                                {!rosterLoading && roster.map(s => (
                                     <tr key={s.id} className="border-b last:border-b-0 hover:bg-amber-50">
-                                        <td className="p-3 text-center font-mono text-stone-500 font-bold">{s.number}</td>
-                                        <td className="p-3 font-bold">{s.name}</td>
-                                        <td className="p-3 text-center text-stone-600">
+                                        <td className="p-2 text-center font-mono text-stone-500 font-bold">{s.number}</td>
+                                        <td className="p-2 font-bold">{s.name}</td>
+                                        <td className="p-2 text-center text-stone-600">
                                             {s.gender === 'male' ? '남' : s.gender === 'female' ? '여' : '-'}
                                         </td>
-                                        <td className="p-3"></td>
+                                        <td className="p-2 text-stone-600">{s.birthDate ?? '-'}</td>
+                                        <td className="p-2 text-stone-600">{s.previousGradeClass ?? '-'}</td>
+                                        <td className="p-2">
+                                            <input
+                                                className="w-full min-w-[80px] max-w-[140px] bg-transparent outline-none border-b border-transparent hover:border-stone-300 focus:border-amber-500 rounded px-1 py-0.5 text-sm text-stone-700"
+                                                placeholder="형제자매"
+                                                value={s.siblings ?? ''}
+                                                onChange={e => onRosterUpdate?.(s.id, 'siblings', e.target.value)}
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                            <input
+                                                className="w-full min-w-[80px] max-w-[180px] bg-transparent outline-none border-b border-transparent hover:border-stone-300 focus:border-amber-500 rounded px-1 py-0.5 text-sm text-stone-700"
+                                                placeholder="비고"
+                                                value={s.remarks ?? ''}
+                                                onChange={e => onRosterUpdate?.(s.id, 'remarks', e.target.value)}
+                                            />
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -754,6 +1040,137 @@ const HANDBOOK_FILE_CONFIG: { type: handbookFileService.HandbookFileType; label:
   { type: 'class_hour_2', label: '시수표 2학기' },
   { type: 'progress_chart', label: '진도표' },
 ];
+
+// 3종세트: 연간계획표, 진도표, 시수표 — 파일 올리면 바로 보기
+type ThreeSetSubTab = 'annual' | 'progress' | 'classhour';
+const THREE_SET_TABS: { id: ThreeSetSubTab; label: string; types: handbookFileService.HandbookFileType[] }[] = [
+  { id: 'annual', label: '연간계획표', types: ['annual_timetable'] },
+  { id: 'progress', label: '진도표', types: ['progress_chart'] },
+  { id: 'classhour', label: '시수표', types: ['class_hour_1', 'class_hour_2'] },
+];
+const THREE_SET_TYPE_LABELS: Partial<Record<handbookFileService.HandbookFileType, string>> = {
+  annual_timetable: '연간계획표',
+  progress_chart: '진도표',
+  class_hour_1: '시수표 1학기',
+  class_hour_2: '시수표 2학기',
+};
+
+const ThreeSetSection = ({ isTeacherMode }: { isTeacherMode: boolean }) => {
+  const [files, setFiles] = useState<handbookFileService.HandbookFilesData>({});
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState<handbookFileService.HandbookFileType | null>(null);
+  const [subTab, setSubTab] = useState<ThreeSetSubTab>('annual');
+
+  const load = async () => {
+    setLoading(true);
+    const data = await handbookFileService.getHandbookFilesAsync();
+    setFiles(data);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const handleUpload = async (type: handbookFileService.HandbookFileType, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(type);
+    try {
+      await handbookFileService.uploadHandbookFile(type, file);
+      await load();
+    } catch (err: unknown) {
+      alert((err as Error)?.message || '업로드에 실패했습니다.');
+    } finally {
+      setUploading(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleDelete = async (type: handbookFileService.HandbookFileType) => {
+    if (!confirm('등록된 파일을 삭제할까요?')) return;
+    try {
+      await handbookFileService.deleteHandbookFile(type);
+      await load();
+    } catch (err: unknown) {
+      alert((err as Error)?.message || '삭제에 실패했습니다.');
+    }
+  };
+
+  const currentConfig = THREE_SET_TABS.find(t => t.id === subTab)!;
+
+  return (
+    <div className="h-full flex flex-col p-4 overflow-hidden">
+      <div className="flex gap-2 mb-4 shrink-0">
+        {THREE_SET_TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setSubTab(t.id)}
+            className={`px-4 py-2.5 rounded-xl font-bold border-2 transition-colors ${
+              subTab === t.id ? 'bg-rose-100 border-rose-400 text-rose-800' : 'bg-white border-stone-200 text-stone-500 hover:bg-stone-50'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center text-stone-500">로딩 중...</div>
+      ) : (
+        <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-auto">
+          {currentConfig.types.map((type) => {
+            const item = files[type];
+            const label = THREE_SET_TYPE_LABELS[type] ?? type;
+            return (
+              <div key={type} className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-0">
+                <div className="p-3 bg-stone-50 border-b border-stone-200 flex items-center justify-between shrink-0">
+                  <span className="font-bold text-stone-700">{label}</span>
+                  {item?.fileUrl ? (
+                    <div className="flex items-center gap-2">
+                      <a href={item.fileUrl} download className="p-2 rounded-lg bg-stone-200 text-stone-700 hover:bg-stone-300">
+                        <Download size={18} />
+                      </a>
+                      {isTeacherMode && (
+                        <button onClick={() => handleDelete(type)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg">
+                          <Trash2 size={18} />
+                        </button>
+                      )}
+                    </div>
+                  ) : isTeacherMode ? (
+                    <label className="flex items-center gap-2 px-3 py-2 bg-rose-100 text-rose-800 rounded-lg font-bold text-sm cursor-pointer hover:bg-rose-200">
+                      <Upload size={18} /> {uploading === type ? '업로드 중...' : '파일 올리기'}
+                      <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => handleUpload(type, e)} disabled={!!uploading} />
+                    </label>
+                  ) : (
+                    <span className="text-sm text-stone-400">등록된 파일 없음</span>
+                  )}
+                </div>
+                {item?.fileUrl ? (
+                  <div className="flex-1 min-h-[280px] p-3 bg-stone-50 flex items-center justify-center">
+                    {item.fileType === 'pdf' ? (
+                      <iframe src={item.fileUrl} className="w-full flex-1 min-h-[300px] rounded-lg border border-stone-200" title={label} />
+                    ) : (
+                      <img src={item.fileUrl} alt="" className="max-w-full max-h-[60vh] object-contain rounded-lg" />
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex-1 min-h-[200px] flex items-center justify-center p-6 bg-stone-50/50">
+                    {isTeacherMode ? (
+                      <label className="flex flex-col items-center gap-2 p-6 border-2 border-dashed border-stone-300 rounded-xl cursor-pointer hover:bg-stone-50 text-stone-500">
+                        <Upload size={32} />
+                        <span className="text-sm font-medium">클릭해서 파일 올리기 (PDF 또는 이미지)</span>
+                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => handleUpload(type, e)} disabled={!!uploading} />
+                      </label>
+                    ) : (
+                      <p className="text-stone-400 text-sm">등록된 파일이 없습니다.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const HandbookFileSection = ({ isTeacherMode }: { isTeacherMode: boolean }) => {
   const [files, setFiles] = useState<handbookFileService.HandbookFilesData>({});
@@ -827,7 +1244,7 @@ const HandbookFileSection = ({ isTeacherMode }: { isTeacherMode: boolean }) => {
                 ) : isTeacherMode ? (
                   <label className="flex items-center justify-center gap-1 px-3 py-2 bg-stone-100 hover:bg-stone-200 rounded-lg text-xs font-bold text-stone-600 cursor-pointer">
                     <Upload size={14}/> {uploading === type ? '업로드 중...' : '파일 올리기'}
-                    <input type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" className="hidden" onChange={(e) => handleUpload(type, e)} disabled={!!uploading} />
+                    <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => handleUpload(type, e)} disabled={!!uploading} />
                   </label>
                 ) : (
                   <div className="text-xs text-stone-400 py-2">등록된 파일 없음</div>
@@ -1244,22 +1661,94 @@ const DailyRight = ({ currentDate, studentId, onRefresh, isTeacherMode, onRegist
     )
 }
 
-const RosterRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onRegisterSave?: (key: string, handler: () => void) => () => void }) => {
+export type RosterChecklistData = { cols: string[]; checks: Record<string, Record<number, boolean>> };
+
+const RosterRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onRegisterSave?: (key: string, handler: () => void | Promise<void>) => () => void }) => {
     const [cols, setCols] = useState(['과제제출', '가정통신문', '준비물', '우유']);
     const [checks, setChecks] = useState<Record<string, Record<number, boolean>>>({});
+    const [checklistLoading, setChecklistLoading] = useState(true);
+    const stateRef = useRef({ cols, checks });
+    stateRef.current = { cols, checks };
 
     useEffect(() => {
-        const savedChecks = localStorage.getItem('edu_roster_checks');
-        if (savedChecks) setChecks(JSON.parse(savedChecks));
-        
-        const savedCols = localStorage.getItem('edu_roster_cols');
-        if (savedCols) setCols(JSON.parse(savedCols));
+        let cancelled = false;
+        const load = async () => {
+            const fromLocal = (): RosterChecklistData | null => {
+                const savedChecks = localStorage.getItem('edu_roster_checks');
+                const savedCols = localStorage.getItem('edu_roster_cols');
+                if (!savedCols) return null;
+                try {
+                    const c = savedChecks ? JSON.parse(savedChecks) as Record<string, Record<string, boolean>> : {};
+                    const checksNum: Record<string, Record<number, boolean>> = {};
+                    Object.keys(c).forEach((studentId) => {
+                        checksNum[studentId] = {};
+                        Object.keys(c[studentId]).forEach((k) => {
+                            checksNum[studentId][Number(k)] = c[studentId][k];
+                        });
+                    });
+                    return { cols: JSON.parse(savedCols), checks: checksNum };
+                } catch {
+                    return null;
+                }
+            };
+            if (supabase) {
+                try {
+                    const profile = await getCurrentUserProfile();
+                    const classId = profile?.class_id;
+                    if (classId) {
+                        const { data } = await supabase.from('classes').select('roster_checklist_data').eq('id', classId).maybeSingle();
+                        const raw = data?.roster_checklist_data as { cols?: string[]; checks?: Record<string, Record<string, boolean>> } | null;
+                        if (!cancelled && raw?.cols && Array.isArray(raw.cols)) {
+                            const checksNum: Record<string, Record<number, boolean>> = {};
+                            if (raw.checks && typeof raw.checks === 'object') {
+                                Object.keys(raw.checks).forEach((studentId) => {
+                                    const row = raw.checks![studentId];
+                                    if (!row || typeof row !== 'object') return;
+                                    checksNum[studentId] = {};
+                                    Object.keys(row).forEach((k) => {
+                                        checksNum[studentId][Number(k)] = !!row[k];
+                                    });
+                                });
+                            }
+                            setCols(raw.cols);
+                            setChecks(checksNum);
+                            setChecklistLoading(false);
+                            return;
+                        }
+                    }
+                } catch {
+                    // fallback to local
+                }
+            }
+            const local = fromLocal();
+            if (!cancelled) {
+                if (local) {
+                    setCols(local.cols);
+                    setChecks(local.checks);
+                }
+                setChecklistLoading(false);
+            }
+        };
+        load();
+        return () => { cancelled = true; };
     }, []);
 
-    const handleSave = () => {
-        localStorage.setItem('edu_roster_checks', JSON.stringify(checks));
-        localStorage.setItem('edu_roster_cols', JSON.stringify(cols));
-    };
+    const handleSave = useCallback(async () => {
+        const { cols: c, checks: ch } = stateRef.current;
+        localStorage.setItem('edu_roster_checks', JSON.stringify(ch));
+        localStorage.setItem('edu_roster_cols', JSON.stringify(c));
+        if (supabase) {
+            try {
+                const profile = await getCurrentUserProfile();
+                const classId = profile?.class_id;
+                if (classId) {
+                    await supabase.from('classes').update({ roster_checklist_data: { cols: c, checks: ch } }).eq('id', classId);
+                }
+            } catch (e) {
+                console.warn('[RosterRight] Supabase save failed', e);
+            }
+        }
+    }, []);
 
     useEffect(() => {
         if (!onRegisterSave) return;
@@ -1277,14 +1766,15 @@ const RosterRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onReg
             <div className="flex justify-between items-center mb-6 border-b-2 border-stone-300 pb-3">
                 <h3 className="font-bold text-stone-800 text-2xl">체크리스트</h3>
                 <div className="flex gap-2 no-print">
+                    {checklistLoading && <span className="text-sm text-stone-500">불러오는 중...</span>}
                     <button onClick={() => setCols([...cols, '새항목'])} className="text-sm bg-stone-200 px-3 py-1.5 rounded hover:bg-stone-300 font-bold">+ 열 추가</button>
                 </div>
             </div>
-            <div className="overflow-auto border-2 border-stone-300 rounded-xl bg-white h-full shadow-sm">
-                <table className="w-full text-base">
+            <div className="overflow-x-auto overflow-y-auto border-2 border-stone-300 rounded-xl bg-white h-full shadow-sm min-h-0">
+                <table className="w-full text-base min-w-max">
                     <thead className="bg-stone-100">
                         <tr>
-                            <th className="p-3 border-b border-r w-24 sticky left-0 bg-stone-100 z-10 text-stone-600">이름</th>
+                            <th className="p-3 border-b border-r w-24 sticky left-0 bg-stone-100 z-10 text-stone-600 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">이름</th>
                             {cols.map((c, i) => (
                                 <th key={i} className="p-3 border-b border-r min-w-[80px]">
                                     <input className="w-full bg-transparent text-center font-bold outline-none text-stone-700" value={c} onChange={e=>{
@@ -1297,7 +1787,7 @@ const RosterRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onReg
                     <tbody>
                         {roster.map(s => (
                             <tr key={s.id} className="border-b last:border-b-0 hover:bg-amber-50 group">
-                                <td className="p-3 border-r font-bold text-center sticky left-0 bg-white group-hover:bg-amber-50 text-stone-800">{s.name}</td>
+                                <td className="p-3 border-r font-bold text-center sticky left-0 bg-white group-hover:bg-amber-50 text-stone-800 z-[1] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">{s.name}</td>
                                 {cols.map((_, i) => (
                                     <td key={i} className="p-0 border-r text-center align-middle">
                                         <div className="flex justify-center items-center h-full">
@@ -1319,22 +1809,23 @@ const RosterRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onReg
     )
 }
 
-const ContactRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onRegisterSave?: (key: string, handler: () => void) => () => void }) => {
-    const [info, setInfo] = useState<Record<string, { phone: string, parentPhone: string, address: string }>>({});
+const ContactRight = ({
+    roster,
+    contactInfo,
+    onContactChange,
+    onRegisterSave,
+}: {
+    roster: ClassStudent[];
+    contactInfo: Record<string, ContactInfoItem>;
+    onContactChange: (id: string, field: keyof ContactInfoItem, value: string) => void;
+    onRegisterSave?: (key: string, handler: () => void) => () => void;
+}) => {
+    const stateRef = useRef(contactInfo);
+    stateRef.current = contactInfo;
 
-    useEffect(() => {
-        const stored = localStorage.getItem('edu_contact_info');
-        if (stored) setInfo(JSON.parse(stored));
+    const handleSave = useCallback(() => {
+        localStorage.setItem('edu_contact_info', JSON.stringify(stateRef.current));
     }, []);
-
-    const handleChange = (id: string, field: string, value: string) => {
-        const newInfo = { ...info, [id]: { ...info[id], [field]: value } };
-        setInfo(newInfo);
-    };
-
-    const handleSave = () => {
-        localStorage.setItem('edu_contact_info', JSON.stringify(info));
-    };
 
     useEffect(() => {
         if (!onRegisterSave) return;
@@ -1344,15 +1835,13 @@ const ContactRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onRe
     return (
         <div className="h-full flex flex-col">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-stone-800 text-xl flex items-center gap-2"><Phone size={20}/> 주소록</h3>
+                <h3 className="font-bold text-stone-800 text-xl flex items-center gap-2"><Phone size={20}/> 주소록 · 주소</h3>
             </div>
             <div className="overflow-auto border-2 border-indigo-200 rounded-xl bg-white h-full shadow-sm">
                 <table className="w-full text-sm">
                     <thead className="bg-indigo-50">
                         <tr>
-                            <th className="p-3 border-b border-indigo-200 w-20">이름</th>
-                            <th className="p-3 border-b border-indigo-200 w-32">학생 연락처</th>
-                            <th className="p-3 border-b border-indigo-200 w-32">보호자 연락처</th>
+                            <th className="p-3 border-b border-indigo-200 w-24">이름</th>
                             <th className="p-3 border-b border-indigo-200">주소</th>
                         </tr>
                     </thead>
@@ -1360,32 +1849,41 @@ const ContactRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onRe
                         {roster.map(s => (
                             <tr key={s.id} className="border-b hover:bg-indigo-50/30">
                                 <td className="p-2 border-r text-center font-bold">{s.name}</td>
-                                <td className="p-2 border-r"><input className="w-full bg-transparent outline-none text-center" placeholder="010-0000-0000" value={info[s.id]?.phone || ''} onChange={e => handleChange(s.id, 'phone', e.target.value)} /></td>
-                                <td className="p-2 border-r"><input className="w-full bg-transparent outline-none text-center" placeholder="010-0000-0000" value={info[s.id]?.parentPhone || ''} onChange={e => handleChange(s.id, 'parentPhone', e.target.value)} /></td>
-                                <td className="p-2"><input className="w-full bg-transparent outline-none" placeholder="주소를 입력하세요" value={info[s.id]?.address || ''} onChange={e => handleChange(s.id, 'address', e.target.value)} /></td>
+                                <td className="p-2">
+                                    <input
+                                        className="w-full bg-transparent outline-none border-b border-transparent hover:border-indigo-200 focus:border-indigo-400 rounded px-2 py-1 min-w-[180px]"
+                                        placeholder="주소를 입력하세요"
+                                        value={contactInfo[s.id]?.address ?? ''}
+                                        onChange={e => onContactChange(s.id, 'address', e.target.value)}
+                                    />
+                                </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
         </div>
-    )
-}
+    );
+};
 
-const CounselRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onRegisterSave?: (key: string, handler: () => void) => () => void }) => {
+const CounselRight = ({
+    roster,
+    counselLogs,
+    setCounselLogs,
+    onRegisterSave,
+}: {
+    roster: ClassStudent[];
+    counselLogs: CounselLogItem[];
+    setCounselLogs: React.Dispatch<React.SetStateAction<CounselLogItem[]>>;
+    onRegisterSave?: (key: string, handler: () => void) => () => void;
+}) => {
     const [selectedStudent, setSelectedStudent] = useState(roster[0]?.id || '');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [type, setType] = useState('상담');
     const [content, setContent] = useState('');
-    const [logs, setLogs] = useState<{id: string, studentId: string, date: string, type: string, content: string}[]>([]);
     const [isUnlocked, setIsUnlocked] = useState(false);
     const [pin, setPin] = useState('');
     const [savedPin, setSavedPin] = useState('');
-
-    useEffect(() => {
-        const stored = localStorage.getItem('edu_counsel_logs');
-        if (stored) setLogs(JSON.parse(stored));
-    }, []);
 
     useEffect(() => {
         const storedPin = localStorage.getItem('edu_counsel_pin') || '';
@@ -1401,22 +1899,22 @@ const CounselRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onRe
     const handleAdd = () => {
         if (!isUnlocked) return;
         if (!content.trim()) return;
-        const newLog = { id: generateUUID(), studentId: selectedStudent, date, type, content };
-        const newLogs = [newLog, ...logs];
-        setLogs(newLogs);
+        const newLog: CounselLogItem = { id: generateUUID(), studentId: selectedStudent, date, type, content };
+        const newLogs = [newLog, ...counselLogs];
+        setCounselLogs(newLogs);
         localStorage.setItem('edu_counsel_logs', JSON.stringify(newLogs));
         setContent('');
     };
 
     const handleDelete = (id: string) => {
         if (!confirm('삭제하시겠습니까?')) return;
-        const newLogs = logs.filter(l => l.id !== id);
-        setLogs(newLogs);
+        const newLogs = counselLogs.filter(l => l.id !== id);
+        setCounselLogs(newLogs);
         localStorage.setItem('edu_counsel_logs', JSON.stringify(newLogs));
     };
 
     const handleSave = () => {
-        localStorage.setItem('edu_counsel_logs', JSON.stringify(logs));
+        localStorage.setItem('edu_counsel_logs', JSON.stringify(counselLogs));
     };
 
     useEffect(() => {
@@ -1447,7 +1945,7 @@ const CounselRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onRe
         setPin('');
     };
 
-    const studentLogs = logs.filter(l => l.studentId === selectedStudent);
+    const studentLogs = counselLogs.filter(l => l.studentId === selectedStudent);
 
     return (
         <div className="h-full flex flex-col p-2">
@@ -1530,6 +2028,183 @@ const CounselRight = ({ roster, onRegisterSave }: { roster: ClassStudent[]; onRe
         </div>
     )
 }
+
+// 기록저장인쇄: 날짜·항목별 PDF/엑셀 다운로드 및 인쇄
+const ExportRight = ({
+    roster,
+    contactInfo,
+    counselLogs,
+    exportDateFrom,
+    exportDateTo,
+    exportItems,
+    onPrint,
+}: {
+    roster: ClassStudent[];
+    contactInfo: Record<string, ContactInfoItem>;
+    counselLogs: CounselLogItem[];
+    exportDateFrom: string;
+    exportDateTo: string;
+    exportItems: Record<string, boolean>;
+    onPrint: () => void;
+}) => {
+    const getName = (id: string) => roster.find(s => s.id === id)?.name ?? '-';
+
+    const handleDownloadPdf = () => {
+        const hasRoster = exportItems.roster && roster.length > 0;
+        const hasContact = exportItems.contact && Object.keys(contactInfo).length > 0;
+        const from = new Date(exportDateFrom);
+        const to = new Date(exportDateTo);
+        const hasCounsel = exportItems.counsel && counselLogs.some(l => { const d = new Date(l.date); return d >= from && d <= to; });
+        const allSchedulesForPdf = scheduleService.getAllSchedules();
+        const hasLog = exportItems.log && allSchedulesForPdf.some(i => i.type === 'handbook_log' && i.date >= exportDateFrom && i.date <= exportDateTo);
+        if (!hasRoster && !hasContact && !hasCounsel && !hasLog) {
+            alert('선택한 항목에 해당 날짜 범위의 데이터가 없습니다.');
+            return;
+        }
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        let y = 20;
+        const line = (text: string, font: 'normal' | 'bold' = 'normal') => {
+            doc.setFont(undefined, font);
+            doc.text(text, 14, y);
+            y += 7;
+        };
+
+        if (exportItems.roster && roster.length > 0) {
+            doc.setFontSize(14);
+            line('■ 명부', 'bold');
+            doc.setFontSize(10);
+            const rosterHeaders = ['No', '이름', '성별', '생년월일', '이전학년반', '형제자매', '비고'];
+            roster.slice(0, 25).forEach((s, i) => {
+                line(`${s.number}\t${s.name}\t${s.gender === 'male' ? '남' : s.gender === 'female' ? '여' : '-'}\t${s.birthDate ?? ''}\t${s.previousGradeClass ?? ''}\t${s.siblings ?? ''}\t${s.remarks ?? ''}`);
+            });
+            if (roster.length > 25) line(`... 외 ${roster.length - 25}명`);
+            y += 10;
+        }
+
+        if (exportItems.contact && Object.keys(contactInfo).length > 0) {
+            if (y > 250) { doc.addPage(); y = 20; }
+            doc.setFontSize(14);
+            line('■ 주소록', 'bold');
+            doc.setFontSize(10);
+            Object.entries(contactInfo).slice(0, 20).forEach(([id, info]) => {
+                const name = getName(id);
+                line(`${name}\t${info.phone}\t${info.motherPhone}\t${info.fatherPhone}\t${info.address}`);
+            });
+            y += 10;
+        }
+
+        const from = new Date(exportDateFrom);
+        const to = new Date(exportDateTo);
+        if (exportItems.counsel && counselLogs.length > 0) {
+            const filtered = counselLogs.filter(l => {
+                const d = new Date(l.date);
+                return d >= from && d <= to;
+            });
+            if (filtered.length > 0 && y > 240) { doc.addPage(); y = 20; }
+            doc.setFontSize(14);
+            line('■ 상담/관찰', 'bold');
+            doc.setFontSize(10);
+            filtered.slice(0, 15).forEach(l => {
+                line(`${l.date}\t${getName(l.studentId)}\t${l.type}`);
+                doc.text(l.content.slice(0, 80) + (l.content.length > 80 ? '...' : ''), 14, y);
+                y += 10;
+            });
+            y += 10;
+        }
+
+        const logItems = allSchedulesForPdf.filter(i => i.type === 'handbook_log' && i.date >= exportDateFrom && i.date <= exportDateTo);
+        if (exportItems.log && logItems.length > 0) {
+            if (y > 240) { doc.addPage(); y = 20; }
+            doc.setFontSize(14);
+            line('■ 기록', 'bold');
+            doc.setFontSize(10);
+            logItems.slice(0, 15).forEach(item => {
+                try {
+                    const { title, body } = JSON.parse(item.content) as { title?: string; body?: string };
+                    line(`${item.date}\t${title ?? '-'}`);
+                    doc.text((body ?? '').slice(0, 80), 14, y);
+                    y += 10;
+                } catch {
+                    line(`${item.date}\t${item.content.slice(0, 40)}`);
+                }
+            });
+        }
+
+        doc.save(`교무수첩_내보내기_${new Date().toISOString().slice(0, 10)}.pdf`);
+    };
+
+    const handleDownloadExcel = () => {
+        const wb = XLSX.utils.book_new();
+        const toSheet = (arr: unknown[][], name: string) => {
+            const ws = XLSX.utils.aoa_to_sheet(arr);
+            XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+        };
+
+        if (exportItems.roster && roster.length > 0) {
+            toSheet(
+                [['No', '이름', '성별', '생년월일', '이전학년반', '형제자매', '비고'], ...roster.map(s => [s.number, s.name, s.gender === 'male' ? '남' : s.gender === 'female' ? '여' : '', s.birthDate ?? '', s.previousGradeClass ?? '', s.siblings ?? '', s.remarks ?? ''])],
+                '명부'
+            );
+        }
+        if (exportItems.contact && Object.keys(contactInfo).length > 0) {
+            toSheet(
+                [['이름', '학생연락처', '모', '부', '주소'], ...Object.entries(contactInfo).map(([id, info]) => [getName(id), info.phone, info.motherPhone, info.fatherPhone, info.address])],
+                '주소록'
+            );
+        }
+        const from = new Date(exportDateFrom);
+        const to = new Date(exportDateTo);
+        if (exportItems.counsel && counselLogs.length > 0) {
+            const filtered = counselLogs.filter(l => {
+                const d = new Date(l.date);
+                return d >= from && d <= to;
+            });
+            toSheet([['날짜', '학생', '유형', '내용'], ...filtered.map(l => [l.date, getName(l.studentId), l.type, l.content])], '상담관찰');
+        }
+        const allSchedules = scheduleService.getAllSchedules();
+        const logItems = allSchedules.filter(i => i.type === 'handbook_log' && i.date >= exportDateFrom && i.date <= exportDateTo);
+        if (exportItems.log && logItems.length > 0) {
+            const rows: (string | number)[][] = [['날짜', '제목', '내용']];
+            logItems.forEach(item => {
+                try {
+                    const { title, body } = JSON.parse(item.content) as { title?: string; body?: string };
+                    rows.push([item.date, title ?? '', body ?? '']);
+                } catch {
+                    rows.push([item.date, '', item.content]);
+                }
+            });
+            toSheet(rows, '기록');
+        }
+
+        if (wb.SheetNames.length === 0) {
+            alert('선택한 항목에 내보낼 데이터가 없습니다.');
+            return;
+        }
+        XLSX.writeFile(wb, `교무수첩_내보내기_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    };
+
+    return (
+        <div className="h-full flex flex-col justify-center items-center p-6">
+            <p className="text-stone-600 text-center mb-8 max-w-sm">선택한 날짜와 항목으로 PDF·엑셀을 다운로드하거나 인쇄할 수 있습니다.</p>
+            <div className="flex flex-wrap justify-center gap-4">
+                <button type="button" onClick={handleDownloadPdf} className="flex flex-col items-center justify-center gap-2 w-32 h-32 rounded-2xl bg-red-50 hover:bg-red-100 border-2 border-red-200 text-red-800 font-bold shadow-md hover:shadow-lg transition-all">
+                    <FileText size={40} />
+                    <span>PDF</span>
+                    <span className="text-xs font-normal">다운로드</span>
+                </button>
+                <button type="button" onClick={handleDownloadExcel} className="flex flex-col items-center justify-center gap-2 w-32 h-32 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-200 text-emerald-800 font-bold shadow-md hover:shadow-lg transition-all">
+                    <Download size={40} />
+                    <span>엑셀</span>
+                    <span className="text-xs font-normal">다운로드</span>
+                </button>
+                <button type="button" onClick={onPrint} className="flex flex-col items-center justify-center gap-2 w-32 h-32 rounded-2xl bg-slate-100 hover:bg-slate-200 border-2 border-slate-300 text-slate-800 font-bold shadow-md hover:shadow-lg transition-all">
+                    <Printer size={40} />
+                    <span>인쇄</span>
+                </button>
+            </div>
+        </div>
+    );
+};
 
 const LogRight = ({ currentDate, studentId, onRefresh, onRegisterSave }: { currentDate: Date, studentId: string, onRefresh: () => void, onRegisterSave?: (key: string, handler: () => void) => () => void }) => {
     const [title, setTitle] = useState('');

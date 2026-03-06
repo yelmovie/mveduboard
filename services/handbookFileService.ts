@@ -120,10 +120,17 @@ const compressImage = async (base64Str: string, maxWidth = 1024, quality = 0.7):
   });
 };
 
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const isAllowedFile = (file: File) =>
+  file.type === 'application/pdf' || ALLOWED_IMAGE_TYPES.includes(file.type);
+
 export const uploadHandbookFile = async (
   type: HandbookFileType,
   file: File
 ): Promise<HandbookFileItem> => {
+  if (!isAllowedFile(file)) {
+    throw new Error('PDF 또는 이미지 파일(JPG, PNG, GIF, WEBP)만 업로드할 수 있습니다.');
+  }
   const isPdf = file.type === 'application/pdf';
   const baseItem: HandbookFileItem = {
     id: generateUUID(),

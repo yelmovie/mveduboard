@@ -119,24 +119,29 @@ export const normalizeRoster = (students: ClassStudent[]): ClassStudent[] => {
 };
 
 export const getRoster = (): ClassStudent[] => {
-  const classId = getCurrentClassId();
-  const key = getClassRosterKey(classId);
-  
-  const stored = localStorage.getItem(key);
-  if (stored) {
+  try {
+    const classId = getCurrentClassId();
+    const key = getClassRosterKey(classId);
+
+    const stored = localStorage.getItem(key);
+    if (stored) {
       const students: ClassStudent[] = JSON.parse(stored);
-      return normalizeRoster(students);
-  }
+      if (Array.isArray(students)) return normalizeRoster(students);
+    }
 
-  // 기존 키(edu_class_roster)에 데이터 있으면 마이그레이션
-  const oldStored = localStorage.getItem(LS_KEY);
-  if (oldStored) {
-    const students: ClassStudent[] = JSON.parse(oldStored);
-    const normalized = normalizeRoster(students);
-    if (classId) saveRoster(normalized); // classId 있으면 새 키로 저장
-    return normalized;
+    // 기존 키(edu_class_roster)에 데이터 있으면 마이그레이션
+    const oldStored = localStorage.getItem(LS_KEY);
+    if (oldStored) {
+      const students: ClassStudent[] = JSON.parse(oldStored);
+      if (Array.isArray(students)) {
+        const normalized = normalizeRoster(students);
+        if (classId) saveRoster(normalized); // classId 있으면 새 키로 저장
+        return normalized;
+      }
+    }
+  } catch {
+    // localStorage 손상 또는 파싱 오류 시 빈 배열 반환
   }
-
   return [];
 };
 
@@ -215,6 +220,10 @@ export const saveRosterToDb = async (students: ClassStudent[], classId: string) 
     number: s.number,
     name: s.name,
     gender: s.gender,
+    birthDate: s.birthDate ?? null,
+    previousGradeClass: s.previousGradeClass ?? null,
+    remarks: s.remarks ?? null,
+    siblings: s.siblings ?? null,
   }));
   await supabase.from('classes').update({ roster_data: rosterPayload }).eq('id', classId);
 
@@ -250,6 +259,25 @@ export const fetchRosterFromDb = async (): Promise<ClassStudent[]> => {
       number: s.student_no ?? idx + 1,
       gender: s.gender === 'male' || s.gender === 'female' ? s.gender : undefined,
     }));
+    // roster_data에서 생년월일·이전학년반 병합
+    const { data: classRow } = await supabase
+      .from('classes')
+      .select('roster_data')
+      .eq('id', classId)
+      .maybeSingle();
+    const rosterData = classRow?.roster_data as Array<{ id: string; number: number; name: string; gender?: string; birthDate?: string; previousGradeClass?: string; remarks?: string; siblings?: string }> | null;
+    if (rosterData && Array.isArray(rosterData)) {
+      const byId = new Map(rosterData.map((r) => [r.id, r]));
+      mapped.forEach((s) => {
+        const extra = byId.get(s.id);
+        if (extra) {
+          s.birthDate = extra.birthDate ?? undefined;
+          s.previousGradeClass = extra.previousGradeClass ?? undefined;
+          s.remarks = extra.remarks ?? undefined;
+          s.siblings = extra.siblings ?? undefined;
+        }
+      });
+    }
     const normalized = normalizeRoster(mapped);
     saveRoster(normalized);
     return normalized;
@@ -269,13 +297,17 @@ export const fetchRosterFromDb = async (): Promise<ClassStudent[]> => {
     .eq('id', classId)
     .maybeSingle();
 
-  const rosterData = classRow?.roster_data as Array<{ id: string; number: number; name: string; gender?: string }> | null;
+  const rosterData = classRow?.roster_data as Array<{ id: string; number: number; name: string; gender?: string; birthDate?: string; previousGradeClass?: string; remarks?: string; siblings?: string }> | null;
   if (rosterData && Array.isArray(rosterData) && rosterData.length > 0) {
     const mapped: ClassStudent[] = rosterData.map((s) => ({
       id: s.id || generateUUID(),
       name: s.name,
       number: s.number ?? 0,
       gender: s.gender === 'male' || s.gender === 'female' ? s.gender : undefined,
+      birthDate: s.birthDate ?? undefined,
+      previousGradeClass: s.previousGradeClass ?? undefined,
+      remarks: s.remarks ?? undefined,
+      siblings: s.siblings ?? undefined,
     }));
     const normalized = normalizeRoster(mapped);
     saveRoster(normalized);

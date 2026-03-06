@@ -45,8 +45,8 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
   
   // Setup State
   const [isEditing, setIsEditing] = useState(false);
-  const [rows, setRows] = useState(5);
-  const [cols, setCols] = useState(8);
+  const [rows, setRows] = useState(6);
+  const [cols, setCols] = useState(9);
   const [nameInput, setNameInput] = useState('');
   
   // Seat configuration map (true = desk, false = aisle)
@@ -64,7 +64,10 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
 
   useEffect(() => {
     const init = async () => {
-      try { await studentService.fetchRosterFromDb(); } catch {}
+      try {
+        await studentService.preloadClassId();
+        await studentService.fetchRosterFromDb();
+      } catch {}
       try { await seatService.loadSeatDataAsync(); } catch {}
       const saved = seatService.getSeatLayout();
       if (saved) {
@@ -73,9 +76,9 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
           setCols(saved.cols);
           setTempSeatMap(saved.seatMap || Array(saved.rows * saved.cols).fill(true));
       } else {
-          setRows(5);
-          setCols(8);
-          setTempSeatMap(Array(40).fill(true));
+          setRows(6);
+          setCols(9);
+          setTempSeatMap(Array(6 * 9).fill(true));
           setIsEditing(true); 
       }
     };
@@ -186,7 +189,10 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
 
   const handleLoadRoster = async () => {
       if(nameInput && !confirm('현재 입력된 명단이 삭제되고 학급 명부에서 새로 불러옵니다. 계속하시겠습니까?')) return;
-      try { await studentService.fetchRosterFromDb(); } catch {}
+      try {
+        await studentService.preloadClassId();
+        await studentService.fetchRosterFromDb();
+      } catch {}
       const students = studentService.getRoster();
       const names = students.map(s => s.name).join('\n');
       setNameInput(names);

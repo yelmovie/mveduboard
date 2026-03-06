@@ -26,25 +26,33 @@ export const LearningApp: React.FC<LearningAppProps> = ({ onBack, isTeacherMode,
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
-  // Load Roster for Portfolio
+  // Load Roster for Portfolio (학급 명단 연동)
   useEffect(() => {
-      if (activeTab === 'portfolio' && isTeacherMode) {
-          const init = async () => {
-            try { await studentService.fetchRosterFromDb(); } catch {}
-            const loadedRoster = studentService.getRoster();
-            setRoster(loadedRoster);
-            if (loadedRoster.length > 0 && !selectedStudentId) {
-                handleSelectStudent(loadedRoster[0].id);
-            }
-          };
-          init();
-      }
+      if (activeTab !== 'portfolio' || !isTeacherMode) return;
+      setRoster(studentService.getRoster());
+      const init = async () => {
+        try {
+          await studentService.preloadClassId();
+          await studentService.fetchRosterFromDb();
+        } catch {}
+        const loadedRoster = studentService.getRoster();
+        setRoster(loadedRoster);
+        if (loadedRoster.length > 0 && !selectedStudentId) {
+          setSelectedStudentId(loadedRoster[0].id);
+        }
+      };
+      init();
   }, [activeTab, isTeacherMode]);
 
-  const handleSelectStudent = async (studentId: string) => {
-      setSelectedStudentId(studentId);
+  // 학생 선택 시 해당 학생의 영역별 기록 로드
+  useEffect(() => {
+      if (activeTab === 'portfolio' && isTeacherMode && selectedStudentId) {
+          loadStudentPortfolio(selectedStudentId);
+      }
+  }, [activeTab, isTeacherMode, selectedStudentId]);
+
+  const loadStudentPortfolio = async (studentId: string) => {
       setLoadingPortfolio(true);
-      
       const categories = [
           { id: 'learning', name: '배움노트' },
           { id: 'writing', name: '주제글쓰기' },
@@ -52,18 +60,15 @@ export const LearningApp: React.FC<LearningAppProps> = ({ onBack, isTeacherMode,
           { id: 'math', name: '수학오답노트' },
       ];
 
-      const aggregatedData = [];
+      const aggregatedData: { category: string; posts: Post[] }[] = [];
 
       for (const cat of categories) {
           const posts = await boardService.getPosts(cat.id);
-          // Filter by student ID. If student not logged in properly when posting, it might rely on name match (fallback could be added here)
           const myPosts = posts.filter(p => p.author_participant_id === studentId);
-          if (myPosts.length > 0) {
-              aggregatedData.push({
-                  category: cat.name,
-                  posts: myPosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-              });
-          }
+          aggregatedData.push({
+              category: cat.name,
+              posts: myPosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+          });
       }
 
       setStudentPosts(aggregatedData);
@@ -98,18 +103,24 @@ export const LearningApp: React.FC<LearningAppProps> = ({ onBack, isTeacherMode,
                       <h3 className="font-bold text-gray-700 flex items-center gap-2"><User size={18}/> 학생 명단</h3>
                   </div>
                   <div className="p-2 space-y-1">
-                      {roster.map(s => (
-                          <button
-                            key={s.id}
-                            onClick={() => handleSelectStudent(s.id)}
-                            className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors flex items-center justify-between
-                                ${selectedStudentId === s.id ? 'bg-indigo-100 text-indigo-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}
-                            `}
-                          >
-                              <span>{s.number}. {s.name}</span>
-                              {selectedStudentId === s.id && <ChevronRight size={16}/>}
-                          </button>
-                      ))}
+                      {roster.length === 0 ? (
+                          <div className="px-4 py-6 text-center text-sm text-gray-500">
+                              학급관리에서 학생 명단을 먼저 등록해주세요.
+                          </div>
+                      ) : (
+                          roster.map(s => (
+                              <button
+                                key={s.id}
+                                onClick={() => setSelectedStudentId(s.id)}
+                                className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors flex items-center justify-between
+                                    ${selectedStudentId === s.id ? 'bg-indigo-100 text-indigo-700 font-bold' : 'text-gray-600 hover:bg-gray-100'}
+                                `}
+                              >
+                                  <span>{s.number}. {s.name}</span>
+                                  {selectedStudentId === s.id && <ChevronRight size={16}/>}
+                              </button>
+                          ))
+                      )}
                   </div>
               </div>
 
@@ -156,7 +167,9 @@ export const LearningApp: React.FC<LearningAppProps> = ({ onBack, isTeacherMode,
                                                       {group.category}
                                                   </h2>
                                                   <div className="grid grid-cols-1 gap-4">
-                                                      {group.posts.map(post => (
+                                                      {group.posts.length === 0 ? (
+                                                          <p className="text-gray-400 py-4 text-sm">해당 영역에 작성된 글이 없습니다.</p>
+                                                      ) : group.posts.map(post => (
                                                           <div key={post.id} className="border border-gray-300 rounded-lg p-5 break-inside-avoid shadow-sm print:shadow-none print:border-gray-400">
                                                               <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
                                                                   <h3 className="font-bold text-lg text-gray-900">{post.title}</h3>

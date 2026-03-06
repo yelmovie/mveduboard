@@ -47,6 +47,9 @@ export const StudentReportModal: React.FC<StudentReportModalProps> = ({ onClose 
   useEffect(() => {
     let isMounted = true;
     const loadRoster = async () => {
+      try {
+        await studentService.preloadClassId();
+      } catch {}
       const roster = await studentService.fetchRosterFromDb();
       if (!isMounted) return;
       setStudents(roster);

@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { LayoutType, PostColor } from '../types';
 import { X, Image as ImageIcon, Calendar, Youtube, Upload, Palette, Calculator } from 'lucide-react';
-import { resizeAndCompressImage } from '../src/lib/image/resizeCompress';
+import { resizeAndCompressImage, resizeAndCompressImageForAlbum } from '../src/lib/image/resizeCompress';
 import { uploadImageWithQuota, uploadImageWithoutQuota, uploadFileWithoutQuota } from '../src/lib/supabase/storage';
 import { supabase } from '../src/lib/supabase/client';
 import { DAILY_IMAGE_LIMIT, MAX_ALBUM_IMAGES } from '../src/constants/limits';
@@ -312,49 +312,67 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ layout, onClos
     const targetFiles = files.slice(0, remaining);
     setIsUploading(true);
 
+    const resizeForAlbum = isAlbumBoard ? resizeAndCompressImageForAlbum : resizeAndCompressImage;
+    const BATCH_SIZE = 5;
+
     const run = async () => {
       const nextUrls: string[] = [];
       const nextPaths: string[] = [];
+      let uploadErrorMessage = '';
 
-      for (const file of targetFiles) {
-        try {
-          const resized = await resizeAndCompressImage(file);
-
-          if (!supabase) {
+      if (!supabase) {
+        for (const file of targetFiles) {
+          try {
+            const resized = await resizeForAlbum(file);
             const localQuota = checkAndIncrementLocalQuota();
             if (!localQuota.allowed) {
               setUploadError(`오늘은 이미지 ${DAILY_IMAGE_LIMIT}장까지 업로드할 수 있어요. 내일 다시 업로드할 수 있어요 🙂`);
-              await logBetaEvent('upload_blocked_daily_limit');
-              continue;
+              hasQuotaError = true;
+              break;
             }
             nextUrls.push(resized.previewUrl);
             nextPaths.push('');
-            setUploadNotice('현재는 로컬 저장 모드입니다. 이미지가 내 브라우저에만 저장됩니다.');
-            continue;
+          } catch (err) {
+            setUploadError(getErrorMessage(err, '이미지 처리에 실패했습니다.'));
           }
+        }
+        setUploadNotice('현재는 로컬 저장 모드입니다. 이미지가 내 브라우저에만 저장됩니다.');
+        if (nextUrls.length > 0) {
+          setImageUrls((prev) => [...prev, ...nextUrls]);
+          setImageStoragePaths((prev) => [...prev, ...nextPaths]);
+        }
+        return;
+      }
 
-          const { data: userData } = await supabase.auth.getUser();
-          const userId = userData.user?.id;
-          if (!userId) {
-            const localQuota = checkAndIncrementLocalQuota();
-            if (!localQuota.allowed) {
-              setUploadError(`오늘은 이미지 ${DAILY_IMAGE_LIMIT}장까지 업로드할 수 있어요. 내일 다시 업로드할 수 있어요 🙂`);
-              await logBetaEvent('upload_blocked_daily_limit');
-              continue;
-            }
-            nextUrls.push(resized.previewUrl);
-            nextPaths.push('');
-            setUploadNotice('로그인하지 않아 로컬에만 저장됩니다.');
-            continue;
-          }
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id ?? '';
+      const profile = await getCurrentUserProfile();
+      const isTeacher = profile?.role === 'teacher';
+      const storageSchoolId = profile?.school_id || boardId || 'board';
+      const storageClassId = profile?.class_id || boardId || 'board';
 
+      if (!userId) {
+        for (const file of targetFiles) {
+          const resized = await resizeForAlbum(file);
+          const localQuota = checkAndIncrementLocalQuota();
+          if (!localQuota.allowed) break;
           nextUrls.push(resized.previewUrl);
+          nextPaths.push('');
+        }
+        setUploadNotice('로그인하지 않아 로컬에만 저장됩니다.');
+        if (nextUrls.length > 0) {
+          setImageUrls((prev) => [...prev, ...nextUrls]);
+          setImageStoragePaths((prev) => [...prev, ...nextPaths]);
+        }
+        return;
+      }
 
+      const processOne = async (file: File): Promise<{ url: string; path: string } | null> => {
+        try {
+          const resized = await resizeForAlbum(file);
+          const localQuota = checkAndIncrementLocalQuota();
+          if (!localQuota.allowed) return null;
           const safeName = `${generateUUID()}.jpg`;
-          const profile = await getCurrentUserProfile();
-          const isTeacher = profile?.role === 'teacher';
-          const storageSchoolId = profile?.school_id || boardId || 'board';
-          const storageClassId = profile?.class_id || boardId || 'board';
           const uploadResult = isTeacher
             ? await uploadImageWithoutQuota({
                 blob: resized.blob,
@@ -372,33 +390,38 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ layout, onClos
                 userId,
               });
 
-          if (uploadResult.status === 'quota_blocked') {
-            setUploadError(`오늘은 이미지 ${DAILY_IMAGE_LIMIT}장까지 업로드할 수 있어요. 내일 다시 업로드할 수 있어요 🙂`);
-            await logBetaEvent('upload_blocked_daily_limit');
-            continue;
-          }
-
+          if (uploadResult.status === 'quota_blocked') return null;
           if (uploadResult.status === 'upload_failed') {
             const errMsg = (uploadResult as any).error?.message || '알 수 없는 오류';
-            console.error('[upload] multi failed:', errMsg);
-            setUploadError(`이미지 업로드 실패: ${errMsg}`);
-            nextPaths.push('');
-            continue;
+            throw new Error(errMsg);
           }
-
-          if (uploadResult.status !== 'uploaded') {
-            setUploadNotice('업로드가 준비되지 않아 로컬에만 저장됩니다.');
-            nextPaths.push('');
-            continue;
-          }
-
-          nextPaths.push(uploadResult.path);
+          if (uploadResult.status !== 'uploaded') return { url: resized.previewUrl, path: '' };
           await logBetaEvent('upload_success');
+          return { url: resized.previewUrl, path: uploadResult.path };
         } catch (err) {
-          setUploadError(getErrorMessage(err, '이미지 처리에 실패했습니다.'));
+          const msg = getErrorMessage(err, '이미지 처리에 실패했습니다.');
+          if (!uploadErrorMessage) uploadErrorMessage = msg;
+          console.error('[upload] multi failed:', err);
+          return null;
+        }
+      };
+
+      for (let i = 0; i < targetFiles.length; i += BATCH_SIZE) {
+        const batch = targetFiles.slice(i, i + BATCH_SIZE);
+        const results = await Promise.all(batch.map(processOne));
+        for (const r of results) {
+          if (r) {
+            nextUrls.push(r.url);
+            nextPaths.push(r.path);
+          }
         }
       }
 
+      if (uploadErrorMessage && nextUrls.length === 0) {
+        setUploadError(uploadErrorMessage);
+      } else if (uploadErrorMessage && nextUrls.length > 0) {
+        setUploadError(`일부 업로드 실패: ${uploadErrorMessage}`);
+      }
       if (nextUrls.length > 0) {
         setImageUrls((prev) => [...prev, ...nextUrls]);
         setImageStoragePaths((prev) => [...prev, ...nextPaths]);
@@ -754,13 +777,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ layout, onClos
             )}
             {isLearningBoard && (
               <div className="mt-2 text-sm space-y-1">
-                <div className={isLearningTooShort ? 'text-red-500 font-bold' : 'text-gray-500'}>
-                  {bodyLength}/{MIN_LEARNING_NOTE_CHARS}
+                <div className="text-gray-500">
+                  {MIN_LEARNING_NOTE_CHARS > 0 ? `${bodyLength}/${MIN_LEARNING_NOTE_CHARS}` : `${bodyLength}자`}
                 </div>
-                {isLearningTooShort && (
-                  <div className="text-red-500 font-bold">배움노트는 최소 250자 이상 작성해야 저장할 수 있어요.</div>
-                )}
-                {learningNoteWarning && !isLearningTooShort && (
+                {learningNoteWarning && (
                   <div className="text-[#92400E]">{learningNoteWarning}</div>
                 )}
               </div>
@@ -845,7 +865,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ layout, onClos
                     >
                         {isAlbumBoard ? (
                             <span className="text-sm text-gray-500">
-                                클릭해서 사진 여러 장 올리기 (최대 {MAX_ALBUM_IMAGES}장)
+                                클릭해서 사진 여러 장 올리기 (최대 {MAX_ALBUM_IMAGES}장, 자동 축소·압축)
                             </span>
                         ) : imageUrl ? (
                             <img src={imageUrl} alt="preview" className="h-full object-contain" />

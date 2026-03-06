@@ -59,7 +59,7 @@ begin
   end if;
 
   v_answer_count := array_length(p_answers, 1);
-  if v_answer_count is null or v_answer_count <> v_assignment.num_questions then
+  if v_answer_count is null or v_answer_count <> v_assignment.question_count then
     raise exception 'invalid_answer_count';
   end if;
 
@@ -77,7 +77,7 @@ begin
 
   v_attempt_no := coalesce(v_existing_attempt.attempt_no, 0) + 1;
 
-  if v_assignment.attempt_limit is not null and v_attempt_no > v_assignment.attempt_limit then
+  if v_assignment.max_attempts is not null and v_attempt_no > v_assignment.max_attempts then
     return jsonb_build_object(
       'status','locked',
       'message','제출 횟수를 초과했습니다.',
@@ -126,8 +126,8 @@ begin
     end if;
   end loop;
 
-  v_score := round((v_correct_count::numeric / v_assignment.num_questions::numeric) * 100, 2);
-  if v_assignment.require_all_answers and v_wrong_count = 0 then
+  v_score := round((v_correct_count::numeric / v_assignment.question_count::numeric) * 100, 2);
+  if v_assignment.require_all_correct and v_wrong_count = 0 then
     v_completed := true;
   end if;
 

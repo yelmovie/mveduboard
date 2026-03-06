@@ -23,7 +23,7 @@ interface StudentRosterModalProps {
 }
 
 export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose }) => {
-  type TempStudent = { id: string; name: string; number?: number; gender?: 'male' | 'female' };
+  type TempStudent = { id: string; name: string; number?: number; gender?: 'male' | 'female'; birthDate?: string; previousGradeClass?: string; remarks?: string; siblings?: string };
   const MAX_STUDENTS = 30;
   const [draftStudents, setDraftStudents] = useState<TempStudent[]>([]);
   const [inputName, setInputName] = useState('');
@@ -73,7 +73,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
     setDraftStudents(prev => prev.filter(s => s.id !== id));
   };
 
-  const handleUpdate = (id: string, field: 'name' | 'number' | 'gender', value: string) => {
+  const handleUpdate = (id: string, field: 'name' | 'number' | 'gender' | 'birthDate' | 'previousGradeClass' | 'remarks' | 'siblings', value: string) => {
       const newStudents = draftStudents.map(s => {
           if (s.id === id) {
               if (field === 'number') {
@@ -83,6 +83,10 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
               if (field === 'gender') {
                 return { ...s, gender: value === 'male' || value === 'female' ? value : undefined };
               }
+              if (field === 'birthDate') return { ...s, birthDate: value || undefined };
+              if (field === 'previousGradeClass') return { ...s, previousGradeClass: value || undefined };
+              if (field === 'remarks') return { ...s, remarks: value || undefined };
+              if (field === 'siblings') return { ...s, siblings: value || undefined };
               return { ...s, name: value };
           }
           return s;
@@ -133,6 +137,10 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
         name: s.name,
         number: s.number ?? idx + 1,
         gender: s.gender,
+        birthDate: s.birthDate,
+        previousGradeClass: s.previousGradeClass,
+        remarks: s.remarks,
+        siblings: s.siblings,
       }));
       studentService.saveRoster(roster);
       setSaving(false);
@@ -292,13 +300,17 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">번호</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-600">이름</th>
                             <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">성별</th>
+                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-28">생년월일</th>
+                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">이전학년반</th>
+                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">형제자매</th>
+                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-28">비고</th>
                             <th className="py-3 px-4 text-center text-sm font-bold text-gray-600 w-20">삭제</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {loading && (
                             <tr>
-                                <td colSpan={4} className="py-6 text-center text-gray-400">불러오는 중...</td>
+                                <td colSpan={8} className="py-6 text-center text-gray-400">불러오는 중...</td>
                             </tr>
                         )}
                         {draftStudents.map((student) => (
@@ -330,6 +342,42 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                                         <option value="female">여</option>
                                     </select>
                                 </td>
+                                <td className="p-3">
+                                    <input 
+                                        type="text" 
+                                        value={student.birthDate ?? ''}
+                                        onChange={(e) => handleUpdate(student.id, 'birthDate', e.target.value)}
+                                        placeholder="예: 2015.03.02"
+                                        className="w-full border rounded px-2 py-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-gray-800"
+                                    />
+                                </td>
+                                <td className="p-3">
+                                    <input 
+                                        type="text" 
+                                        value={student.previousGradeClass ?? ''}
+                                        onChange={(e) => handleUpdate(student.id, 'previousGradeClass', e.target.value)}
+                                        placeholder="예: 2학년 3반"
+                                        className="w-full border rounded px-2 py-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-gray-800"
+                                    />
+                                </td>
+                                <td className="p-3">
+                                    <input 
+                                        type="text" 
+                                        value={student.siblings ?? ''}
+                                        onChange={(e) => handleUpdate(student.id, 'siblings', e.target.value)}
+                                        placeholder="형제자매"
+                                        className="w-full border rounded px-2 py-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-gray-800"
+                                    />
+                                </td>
+                                <td className="p-3">
+                                    <input 
+                                        type="text" 
+                                        value={student.remarks ?? ''}
+                                        onChange={(e) => handleUpdate(student.id, 'remarks', e.target.value)}
+                                        placeholder="비고"
+                                        className="w-full border rounded px-2 py-1 focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-gray-800"
+                                    />
+                                </td>
                                 <td className="p-3 text-center">
                                     <button 
                                         onClick={() => handleDelete(student.id)}
@@ -342,7 +390,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                         ))}
                         {!loading && draftStudents.length === 0 && (
                             <tr>
-                                <td colSpan={4} className="py-8 text-center text-gray-400">등록된 학생이 없습니다.</td>
+                                <td colSpan={8} className="py-8 text-center text-gray-400">등록된 학생이 없습니다.</td>
                             </tr>
                         )}
                     </tbody>

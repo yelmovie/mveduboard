@@ -49,7 +49,7 @@ const TABLES = {
 const LOCAL_KEY = 'edu_omr_assignments';
 
 const ASSIGNMENT_SELECT =
-  'id, class_id, created_by, title, description, answer_format, num_questions, require_all_answers, feedback_mode, attempt_limit, due_at, is_published, answer_key, created_at, updated_at';
+  'id, class_id, created_by, title, description, answer_format, question_count, require_all_correct, feedback_mode, max_attempts, due_at, is_published, answer_key, created_at, updated_at';
 
 type OmrAssignmentDb = {
   id: string;
@@ -58,10 +58,10 @@ type OmrAssignmentDb = {
   title: string;
   description: string | null;
   answer_format: '1-5' | 'A-E';
-  num_questions: number;
-  require_all_answers: boolean;
+  question_count: number;
+  require_all_correct: boolean;
   feedback_mode: 'wrong_numbers' | 'wrong_count' | 'none';
-  attempt_limit: number | null;
+  max_attempts: number | null;
   due_at: string | null;
   is_published: boolean;
   answer_key?: OmrAnswerKeyItem[] | null;
@@ -143,10 +143,10 @@ const mapDbToAssignment = (row: OmrAssignmentDb): OmrAssignment => ({
   title: row.title,
   description: row.description,
   answer_format: row.answer_format,
-  question_count: row.num_questions,
-  require_all_correct: row.require_all_answers,
+  question_count: row.question_count,
+  require_all_correct: row.require_all_correct,
   feedback_mode: row.feedback_mode,
-  max_attempts: row.attempt_limit,
+  max_attempts: row.max_attempts,
   due_at: row.due_at,
   is_published: row.is_published,
   answer_key: row.answer_key || [],
@@ -163,10 +163,10 @@ const buildPayload = (
   title: assignment.title?.trim() || 'OMR 과제',
   description: assignment.description || null,
   answer_format: assignment.answer_format || '1-5',
-  num_questions: assignment.question_count || 10,
-  require_all_answers: assignment.require_all_correct ?? true,
+  question_count: assignment.question_count || 10,
+  require_all_correct: assignment.require_all_correct ?? true,
   feedback_mode: assignment.feedback_mode || 'wrong_numbers',
-  attempt_limit: assignment.max_attempts ?? null,
+  max_attempts: assignment.max_attempts ?? null,
   due_at: assignment.due_at || null,
   is_published: assignment.is_published ?? false,
   class_id: profile.class_id,

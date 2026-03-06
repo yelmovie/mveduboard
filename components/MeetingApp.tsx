@@ -235,16 +235,19 @@ const DiscussingSection: React.FC<{
           </div>
           <div className="flex gap-2">
             <select
-              value=""
+              value={item.secretaryId || ''}
               onChange={(e) => {
-                if (e.target.value === '__teacher__') handleSetTeacherSecretary();
-                else if (e.target.value) handleSetSecretary(e.target.value);
+                const v = e.target.value;
+                if (v === 'teacher') handleSetTeacherSecretary();
+                else if (v) handleSetSecretary(v);
               }}
-              className="flex-1 text-sm border border-blue-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-400"
+              className="flex-1 text-sm border border-blue-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-400 min-w-0"
             >
-              <option value="">학생 선택...</option>
-              <option value="__teacher__">선생님 (직접 작성)</option>
-              {roster.map(s => (
+              <option value="">
+                {roster.length === 0 ? '학급 명부를 먼저 등록해주세요' : '학생 선택...'}
+              </option>
+              <option value="teacher">선생님 (직접 작성)</option>
+              {roster.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
@@ -374,7 +377,10 @@ export const MeetingApp: React.FC<MeetingAppProps> = ({ onBack, isTeacherMode, s
 
   useEffect(() => {
     const init = async () => {
-      try { await studentService.fetchRosterFromDb(); } catch {}
+      try {
+        await studentService.preloadClassId();
+        await studentService.fetchRosterFromDb();
+      } catch {}
       try { await meetingService.loadMeetingDataAsync(); } catch {}
       setRoster(studentService.getRoster());
     };
@@ -386,6 +392,7 @@ export const MeetingApp: React.FC<MeetingAppProps> = ({ onBack, isTeacherMode, s
 
   const loadData = () => {
     setAgendas(meetingService.getAgendas());
+    setRoster(studentService.getRoster());
   };
 
   const handleOpenCreate = () => {

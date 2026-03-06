@@ -99,7 +99,11 @@ export default function App() {
         setTeacherName("");
         return;
       }
-      const profile = await getCurrentUserProfile();
+      let profile = await getCurrentUserProfile();
+      if (!profile && session) {
+        await new Promise((r) => setTimeout(r, 400));
+        profile = await getCurrentUserProfile();
+      }
       if (profile?.role === "teacher") {
         setIsTeacherLoggedIn(true);
         setTeacherName(profile.display_name || "");
@@ -117,7 +121,7 @@ export default function App() {
     }
   }, [currentApp, isTeacherLoggedIn]);
 
-  // Supabase auth 상태와 UI 동기화 (세션 복구/만료 시 대시보드 표시 정확히 유지)
+  // Supabase auth 상태와 UI 동기화 — 한번 로그인하면 네트워크/일시 오류로 로그아웃되지 않도록 재시도·명시적 SIGNED_OUT만 로그아웃
   useEffect(() => {
     if (!supabase) return;
     const isResetPage = typeof window !== "undefined" && window.location.pathname.startsWith("/reset-password");
@@ -125,44 +129,63 @@ export default function App() {
       if (typeof window !== "undefined" && isAuthDebug()) {
         console.log("[onAuthStateChange]", event, "session:", session ? "있음" : "null");
       }
-      // /reset-password 페이지에서는 recovery 세션 처리를 ResetPasswordPage에 위임
       if (isResetPage && (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
         return;
       }
-      // INITIAL_SESSION with null can happen before URL hash is processed (OAuth callback); defer and re-check
-      if (event === "INITIAL_SESSION" && !session && typeof window !== "undefined" && window.location.hash.includes("access_token")) {
-        setTimeout(async () => {
-          const retry = await getSession();
-          if (retry) {
-            if (isAuthDebug()) console.log("[onAuthStateChange] after URL recovery getSession(): ok");
-            await ensureTeacherProfile(retry.user);
-            const profile = await getCurrentUserProfile();
-            if (profile?.role === "teacher") {
-              setIsTeacherLoggedIn(true);
-              setTeacherName(profile.display_name || "");
-            } else {
-              setIsTeacherLoggedIn(false);
-              setTeacherName("");
-            }
-          } else {
-            setIsTeacherLoggedIn(false);
-            setTeacherName("");
-          }
-        }, 800);
-        return;
-      }
-      if (event === "SIGNED_OUT" || (event === "INITIAL_SESSION" && !session) || !session) {
+      // 명시적 로그아웃만 즉시 반영
+      if (event === "SIGNED_OUT") {
         setIsTeacherLoggedIn(false);
         setTeacherName("");
         return;
       }
-      if (session && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
+      // INITIAL_SESSION with null: OAuth 콜백이면 대기 후 재확인, 아니면 한 번 getSession 재시도 후에만 로그아웃
+      if (event === "INITIAL_SESSION" && !session) {
+        if (typeof window !== "undefined" && window.location.hash.includes("access_token")) {
+          setTimeout(async () => {
+            const retry = await getSession();
+            if (retry) {
+              if (isAuthDebug()) console.log("[onAuthStateChange] after URL recovery getSession(): ok");
+              await ensureTeacherProfile(retry.user);
+              let profile = await getCurrentUserProfile();
+              if (!profile) {
+                await new Promise((r) => setTimeout(r, 400));
+                profile = await getCurrentUserProfile();
+              }
+              if (profile?.role === "teacher") {
+                setIsTeacherLoggedIn(true);
+                setTeacherName(profile.display_name || "");
+              } else {
+                setIsTeacherLoggedIn(false);
+                setTeacherName("");
+              }
+            } else {
+              setIsTeacherLoggedIn(false);
+              setTeacherName("");
+            }
+          }, 800);
+        } else {
+          setTimeout(async () => {
+            const retry = await getSession();
+            if (!retry) {
+              setIsTeacherLoggedIn(false);
+              setTeacherName("");
+            }
+          }, 500);
+        }
+        return;
+      }
+      if (!session) return;
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
         if (typeof window !== "undefined" && isAuthDebug()) {
           const s = await getSession();
           console.log("[로그인 직후] getSession():", s ? "있음" : "null");
         }
         await ensureTeacherProfile(session.user);
-        const profile = await getCurrentUserProfile();
+        let profile = await getCurrentUserProfile();
+        if (!profile) {
+          await new Promise((r) => setTimeout(r, 400));
+          profile = await getCurrentUserProfile();
+        }
         if (profile?.role === "teacher") {
           setIsTeacherLoggedIn(true);
           setTeacherName(profile.display_name || "");

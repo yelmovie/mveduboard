@@ -116,19 +116,18 @@ export const WRITING_FALLBACK_TOPICS = [
   { id: 'fallback-99', category: '기본', topic: '나만의 징크스가 있다면?', sort_order: 99 },
 ];
 
-export const MIN_LEARNING_NOTE_CHARS = 250;
+export const MIN_LEARNING_NOTE_CHARS = 0;
 export const LEARNING_NOTE_RULES_TITLE = '배움노트 쓰기 안내';
 export const LEARNING_NOTE_RULES_TEXT =
   '배움노트는 오늘 수업에서 배운 내용을\n내 생각과 함께 정리하는 글입니다.\n\n' +
   '아래 규칙을 꼭 지켜서 작성해주세요 😊\n\n' +
   '[필수 규칙]\n' +
-  '1. 띄어쓰기 포함 최소 250자 이상 작성\n' +
-  '2. 아래 3가지 내용이 모두 들어가야 합니다\n' +
+  '1. 아래 3가지 내용이 모두 들어가야 합니다\n' +
   '   - 오늘 배운 핵심 내용\n' +
   '   - 기억에 남는 점 또는 새로 알게 된 것\n' +
   '   - 내 생각이나 느낀 점\n' +
-  '3. 의미 없는 문장 반복, 수업과 관계없는 내용은 안 됩니다\n' +
-  '4. 친구를 놀리거나 기분 상하게 하는 말은 사용할 수 없습니다\n\n' +
+  '2. 의미 없는 문장 반복, 수업과 관계없는 내용은 안 됩니다\n' +
+  '3. 친구를 놀리거나 기분 상하게 하는 말은 사용할 수 없습니다\n\n' +
   '[안내 문구]\n' +
   '배움노트에는 정답이 없습니다.\n' +
   '내가 이해한 만큼 솔직하게 쓰는 것이 가장 중요합니다.';

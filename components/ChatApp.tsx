@@ -114,8 +114,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({ onBack, isTeacherMode, student
     if (!isTeacherMode || step !== 'login') return;
     const classCode = localStorage.getItem('edu_join_code') || '';
     setJoinCode(classCode);
-    setRoster(studentService.getRoster());
-    studentService.fetchRosterFromDb().then(setRoster).catch(() => {});
+    (async () => {
+      await studentService.preloadClassId();
+      setRoster(studentService.getRoster());
+      try {
+        const data = await studentService.fetchRosterFromDb();
+        setRoster(data);
+      } catch {}
+    })();
     if (classCode) {
       const savedGroups = chatService.getGroups(classCode);
       setGroups(savedGroups);

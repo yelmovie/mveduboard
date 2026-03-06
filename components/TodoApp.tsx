@@ -31,16 +31,34 @@ export const TodoApp: React.FC<TodoAppProps> = ({ onBack, isTeacherMode, student
   const [roster, setRoster] = useState<{id: string, name: string, pureName: string}[]>([]);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
 
-  // Load data (Supabase 연동: 먼저 로드 후 loadData)
+  // Load data (Supabase 연동: classId 선로드 후 명단·할일 로드)
   useEffect(() => {
     const init = async () => {
-      try { await studentService.fetchRosterFromDb(); } catch {}
+      try {
+        await studentService.preloadClassId();
+        await studentService.fetchRosterFromDb();
+      } catch {}
       try { await todoService.loadTodoDataAsync(); } catch {}
       setRoster(todoService.getRoster());
       loadData();
     };
     init();
   }, [currentDate]);
+
+  // 명단이 비어 있을 때 한 번 더 시도 (race 대비)
+  useEffect(() => {
+    if (!isTeacherMode || roster.length > 0) return;
+    const retry = async () => {
+      try {
+        await studentService.preloadClassId();
+        await studentService.fetchRosterFromDb();
+      } catch {}
+      const next = todoService.getRoster();
+      if (next.length > 0) setRoster(next);
+    };
+    const t = setTimeout(retry, 600);
+    return () => clearTimeout(t);
+  }, [isTeacherMode, roster.length]);
 
   // Teacher Real-time Polling (Auto-refresh every 2 seconds to see students disappearing)
   useEffect(() => {
@@ -88,6 +106,7 @@ export const TodoApp: React.FC<TodoAppProps> = ({ onBack, isTeacherMode, student
         todoService.createTask(currentDate, newTaskContent, isImportant);
         setNewTaskContent('');
         setIsImportant(false);
+        setRoster(todoService.getRoster());
         loadData();
     } catch (e: any) {
         alert(e.message);

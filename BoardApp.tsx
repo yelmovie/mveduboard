@@ -244,17 +244,13 @@ export const BoardApp: React.FC<BoardAppProps> = ({
       <main className="flex-1 p-4 sm:p-6 overflow-y-auto max-w-6xl mx-auto w-full relative">
         
         {/* Description Banner */}
-        <div className="bg-white/90 backdrop-blur border border-white/50 text-gray-800 rounded-2xl p-6 mb-8 shadow-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
+        <div className="bg-white/90 backdrop-blur border border-white/50 text-gray-800 rounded-2xl p-6 mb-4 shadow-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="min-w-0 flex-1">
                 <p className="text-indigo-500 text-sm font-semibold uppercase tracking-wider mb-1">Board Info</p>
                 <p className="text-lg opacity-95 leading-relaxed font-bold">{board?.description}</p>
             </div>
             
-            {/* 
-                Write Button: 
-                - Allowed for Teacher
-                - Allowed for Students/Viewers UNLESS it is the 'schoolplan' board 
-            */}
+            {/* Write Button: Teacher always / Students when allowed */}
             {(role === 'teacher' || (boardId !== 'schoolplan' && allowStudentPost)) && (
                 <button 
                     onClick={() => {
@@ -266,12 +262,25 @@ export const BoardApp: React.FC<BoardAppProps> = ({
                             setShowCreateModal(true);
                         }
                     }}
-                    className="shrink-0 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-transform hover:scale-105 active:scale-95 flex items-center gap-2">
-                    <Plus size={20} />
-                    {role === 'viewer' ? '로그인하고 글쓰기' : '게시물 쓰기'}
+                    className="shrink-0 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-transform hover:scale-105 active:scale-95 flex items-center gap-2 h-12">
+                    <Plus size={22} />
+                    {role === 'viewer' ? '로그인하고 글쓰기' : '글 올리기'}
                 </button>
             )}
         </div>
+
+        {/* 공지사항 등: 글 올리기 버튼 한 번 더 노출 (embed 시 눈에 잘 띄도록) */}
+        {boardId === 'notice_board' && role === 'teacher' && (
+            <div className="mb-6 flex justify-end sm:justify-start">
+                <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all hover:scale-105 active:scale-95 border-2 border-indigo-500"
+                >
+                    <Plus size={24} />
+                    글 올리기
+                </button>
+            </div>
+        )}
 
         {/* Stats Section (Teacher Only) */}
         {showStats && role === 'teacher' && (

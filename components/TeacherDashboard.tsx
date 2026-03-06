@@ -330,7 +330,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
                 title="학교 계획표"
                 icon={TableProperties}
                 colorClass="bg-[#FDA4AF]"
-                subItems={['주간학습안내', '시간표', '급식표', '학사일정']}
+                subItems={['주간학습안내', '급식표', '3종세트']}
                 onClick={() => onSelectApp('planner')}
             />
 

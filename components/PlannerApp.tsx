@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Home, BookOpen, Clock, CalendarRange, Upload, Edit3, Check, Trash2, Plus, FileText, X, Utensils, Download, CheckCircle2, XCircle, Sparkles, Loader2 } from 'lucide-react';
+import { Home, BookOpen, CalendarRange, Upload, Check, Trash2, FileText, X, Utensils, Download, CheckCircle2, XCircle } from 'lucide-react';
 import { Participant, WeeklyStudyData, StudyPeriod, BellScheduleItem } from '../types';
 import * as studyService from '../services/studyService';
 import type { MonthlyPlanData } from '../services/studyService';
@@ -26,7 +26,7 @@ const DEFAULT_BELL_SCHEDULE: BellScheduleItem[] = [
     { label: '6교시', time: '14:00 ~ 14:40' },
 ];
 
-type Tab = 'guide' | 'timetable' | 'monthly' | 'lunch';
+type Tab = 'guide' | 'monthly' | 'lunch';
 
 export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, student, onLoginRequest }) => {
   const [activeTab, setActiveTab] = useState<Tab>('guide');
@@ -96,8 +96,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
         setIsProcessing(false);
         setShowUploadSuccess(true);
         setTimeout(() => setShowUploadSuccess(false), 4000);
-        showToast('success', '파일 등록 완료! 시간표를 자동 분석합니다...');
-        handleAnalyzeSchedule(file);
+        showToast('success', '파일 등록 완료!');
     } catch (err: any) {
         setIsProcessing(false);
         showToast('error', err.message || '업로드에 실패했습니다. 다시 시도해주세요.');
@@ -318,7 +317,6 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
                 <div className="flex bg-[#FEF9E7] p-2 rounded-2xl overflow-x-auto w-full lg:w-auto border border-[#FDE68A]">
                     {[
                         { id: 'guide', label: '주간학습안내', icon: BookOpen },
-                        { id: 'timetable', label: '시간표', icon: Clock },
                         { id: 'lunch', label: '급식표', icon: Utensils },
                         { id: 'monthly', label: '학교 월간교육', icon: CalendarRange },
                     ].map(tab => (
@@ -356,25 +354,12 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
                                         </button>
                                     )}
                                     {(studyData?.fileUrl || studyData?.filePath) && (
-                                        <>
-                                            <button
-                                                onClick={() => handleAnalyzeSchedule()}
-                                                disabled={isAnalyzing}
-                                                className="h-12 px-6 rounded-xl text-lg font-bold flex items-center gap-2 shadow-md transition-all bg-violet-500 text-white hover:bg-violet-600 disabled:bg-gray-400"
-                                            >
-                                                {isAnalyzing ? (
-                                                    <><Loader2 size={20} className="animate-spin" /> 분석 중...</>
-                                                ) : (
-                                                    <><Sparkles size={20} /> AI 시간표 분석</>
-                                                )}
-                                            </button>
-                                            <button
-                                                onClick={handleDeleteGuide}
-                                                className="h-12 px-6 rounded-xl text-lg font-bold flex items-center gap-2 bg-white text-[#F43F5E] border-2 border-[#FCA5A5] hover:bg-[#FFE4E6] shadow-sm"
-                                            >
-                                                <Trash2 size={18} /> 삭제
-                                            </button>
-                                        </>
+                                        <button
+                                            onClick={handleDeleteGuide}
+                                            className="h-12 px-6 rounded-xl text-lg font-bold flex items-center gap-2 bg-white text-[#F43F5E] border-2 border-[#FCA5A5] hover:bg-[#FFE4E6] shadow-sm"
+                                        >
+                                            <Trash2 size={18} /> 삭제
+                                        </button>
                                     )}
                                 </div>
                             )}
@@ -404,188 +389,6 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
                             <p className="text-[#92400E] text-xl font-bold">등록된 주간학습안내가 없습니다.</p>
                         </div>
                     )}
-                </div>
-            )}
-
-            {activeTab === 'timetable' && (
-                <div className="flex-1 p-6 md:p-10 overflow-y-auto max-w-[1920px] mx-auto w-full animate-fade-in-up">
-                    <div className="text-center mb-6">
-                        <h2 className="text-4xl font-hand font-bold text-[#78350F] mb-4">{getDateString()} 시간표</h2>
-                        <div className="flex justify-center gap-2 flex-wrap">
-                            {(() => {
-                                const d = new Date(todayDate || new Date());
-                                const dayOfWeek = d.getDay() || 7;
-                                const monday = new Date(d);
-                                monday.setDate(d.getDate() - (dayOfWeek - 1));
-                                const labels = ['월', '화', '수', '목', '금'];
-                                return labels.map((label, i) => {
-                                    const date = new Date(monday);
-                                    date.setDate(monday.getDate() + i);
-                                    const dateStr = date.toISOString().split('T')[0];
-                                    const isSelected = dateStr === todayDate;
-                                    const hasPeriods = studyData?.schedules?.[dateStr]?.length > 0;
-                                    return (
-                                        <button
-                                            key={dateStr}
-                                            onClick={() => {
-                                                setTodayDate(dateStr);
-                                                const periods = studyData?.schedules?.[dateStr] || [];
-                                                setTodayPeriods(periods);
-                                                setEditedPeriods(periods);
-                                            }}
-                                            className={`px-5 py-2.5 rounded-xl font-bold text-lg transition-all ${
-                                                isSelected
-                                                    ? 'bg-[#FDA4AF] text-white shadow-md'
-                                                    : hasPeriods
-                                                    ? 'bg-[#FFE4E6] text-[#BE185D] border-2 border-[#FDA4AF]'
-                                                    : 'bg-gray-100 text-gray-500 border-2 border-gray-200'
-                                            }`}
-                                        >
-                                            {label} <span className="text-sm font-normal">{date.getDate()}일</span>
-                                        </button>
-                                    );
-                                });
-                            })()}
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col xl:flex-row gap-8 items-start">
-                        <div className="w-full xl:w-1/3 shrink-0">
-                            <div className="bg-white rounded-3xl shadow-xl overflow-hidden border-2 border-[#FDA4AF]">
-                                <div className="bg-[#FFE4E6] p-5 border-b-2 border-[#FDA4AF] flex items-center justify-between gap-3 text-[#BE185D] font-bold text-2xl">
-                                    <div className="flex items-center gap-3">
-                                        <Clock size={28} /> 우리반 시정표
-                                    </div>
-                                    {isTeacherMode && (
-                                        <button
-                                            onClick={() => setIsEditingBell(!isEditingBell)}
-                                            className={`h-12 px-4 rounded-xl text-sm font-bold border-2 transition-colors ${isEditingBell ? 'bg-[#FFE4E6] text-[#BE185D] border-[#FDA4AF]' : 'bg-white text-gray-600 border-gray-200'}`}
-                                        >
-                                            내용 수정
-                                        </button>
-                                    )}
-                                </div>
-                                {isEditingBell && isTeacherMode ? (
-                                    <div className="p-4 space-y-4">
-                                        {editedBellSchedule.map((item, idx) => (
-                                            <div key={idx} className="bg-[#FEF9E7] p-4 rounded-2xl border-2 border-[#FDE68A] space-y-3">
-                                                <div className="flex gap-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.label}
-                                                        onChange={(e) => handleBellItemChange(idx, 'label', e.target.value)}
-                                                        className="w-28 p-2 border-2 rounded-xl text-center font-bold"
-                                                        placeholder="항목"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        value={item.time}
-                                                        onChange={(e) => handleBellItemChange(idx, 'time', e.target.value)}
-                                                        className="flex-1 p-2 border-2 rounded-xl font-mono"
-                                                        placeholder="시간 (예: 9:00 ~ 9:40)"
-                                                    />
-                                                </div>
-                                                <div className="flex items-center justify-between">
-                                                    <label className="flex items-center gap-2 text-sm font-bold text-[#92400E]">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={!!item.isBreak}
-                                                            onChange={(e) => handleBellItemChange(idx, 'isBreak', e.target.checked)}
-                                                        />
-                                                        쉬는 시간/특별 시간
-                                                    </label>
-                                                    <button onClick={() => handleRemoveBellItem(idx)} className="text-[#FDA4AF] hover:text-[#BE185D]">
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        <button onClick={handleAddBellItem} className="w-full py-3 border-2 border-dashed border-[#FDE68A] rounded-2xl text-[#F59E0B] hover:bg-[#FEF9E7] font-bold text-sm">
-                                            + 항목 추가
-                                        </button>
-                                        <button onClick={handleSaveBellSchedule} className="w-full h-12 bg-[#6EE7B7] text-white rounded-xl font-bold hover:bg-[#34D399] shadow-md">
-                                            저장
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="divide-y-2 divide-[#FFE4E6]">
-                                        {bellSchedule.map((item, idx) => (
-                                            <div
-                                                key={idx}
-                                                className={`flex items-center text-xl ${item.isBreak ? 'bg-[#E0F2FE] text-[#0369A1]' : 'bg-white text-[#78350F]'}`}
-                                            >
-                                                <div className="w-32 p-4 font-bold border-r-2 border-[#FDA4AF]/20 text-center shrink-0">{item.label}</div>
-                                                <div className="flex-1 p-4 text-center font-mono font-medium tracking-tight">{item.time}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex-1 w-full">
-                            {isTeacherMode && (
-                                <div className="flex justify-end mb-4">
-                                    <button onClick={() => setIsEditing(!isEditing)} className={`px-6 py-3 rounded-xl text-lg font-bold flex items-center gap-2 border-2 transition-colors ${isEditing ? 'bg-[#FFE4E6] text-[#BE185D] border-[#FDA4AF]' : 'bg-white text-gray-600 border-gray-200'}`}>
-                                        <Edit3 size={20} /> 내용 수정
-                                    </button>
-                                </div>
-                            )}
-
-                            {isEditing && isTeacherMode ? (
-                                <div className="bg-white rounded-3xl shadow-xl p-6 border-2 border-[#FDA4AF]">
-                                    <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
-                                        <h3 className="font-bold text-2xl text-[#78350F]">시간표 수정</h3>
-                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                                            <button onClick={handleSaveEdit} className="h-12 px-6 rounded-xl font-bold flex items-center gap-2 hover:bg-[#34D399] shadow-md text-lg bg-[#6EE7B7] text-white"><Check size={20} /> 저장</button>
-                                            <button onClick={handleDeleteSchedule} className="h-12 px-6 rounded-xl font-bold flex items-center gap-2 bg-white text-[#F43F5E] border-2 border-[#FCA5A5] hover:bg-[#FFE4E6] text-lg">
-                                                <Trash2 size={18} /> 삭제
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {editedPeriods.map((item, idx) => (
-                                            <div key={idx} className="flex gap-4 items-start bg-[#FEF9E7] p-4 rounded-2xl border-2 border-[#FDE68A]">
-                                                <input type="number" value={item.period} onChange={e => handleEditChange(idx, 'period', parseInt(e.target.value))} className="w-16 p-3 border-2 rounded-xl text-center font-bold text-xl" placeholder="교시"/>
-                                                <div className="flex-1 space-y-3">
-                                                    <input type="text" value={item.subject} onChange={e => handleEditChange(idx, 'subject', e.target.value)} className="w-full p-3 border-2 rounded-xl font-bold text-xl" placeholder="과목명 (예: 국어)"/>
-                                                    <input type="text" value={item.content} onChange={e => handleEditChange(idx, 'content', e.target.value)} className="w-full p-3 border-2 rounded-xl text-lg" placeholder="학습 내용 간단 요약"/>
-                                                </div>
-                                                <button onClick={() => handleRemovePeriod(idx)} className="text-[#FDA4AF] hover:text-[#BE185D] p-3"><Trash2 size={24} /></button>
-                                            </div>
-                                        ))}
-                                        <button onClick={handleAddPeriod} className="w-full py-4 border-4 border-dashed border-[#FDE68A] rounded-2xl text-[#F59E0B] hover:bg-[#FEF9E7] font-bold flex items-center justify-center gap-2 text-xl"><Plus size={24} /> 교시 추가</button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <>
-                                    {todayPeriods.length === 0 ? (
-                                        <div className="text-center py-24 bg-[#FEF9E7] rounded-3xl shadow-md border-2 border-[#FCD34D]">
-                                            <p className="text-3xl font-bold text-[#F59E0B] mb-3">오늘 수업 정보가 없습니다.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="grid gap-5">
-                                            {todayPeriods.map((period) => (
-                                                <div key={period.period} className="bg-white rounded-3xl shadow-md p-6 flex items-center gap-6 hover:shadow-xl transition-shadow border-l-[10px] border-transparent hover:border-[#FDA4AF] min-h-[140px] border border-gray-100">
-                                                    <div className="flex-shrink-0 w-24 h-24 bg-[#FEF9E7] rounded-full flex items-center justify-center font-bold text-2xl text-[#78350F] shadow-inner font-hand">
-                                                        {period.period}교시
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <div className={`inline-block px-4 py-2 rounded-full text-lg font-bold border-2 mb-3 ${getSubjectColor(period.subject)}`}>
-                                                            {period.subject}
-                                                        </div>
-                                                        <h3 className="text-3xl font-bold text-[#78350F] break-keep leading-normal font-hand">
-                                                            {period.content}
-                                                        </h3>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
                 </div>
             )}
 

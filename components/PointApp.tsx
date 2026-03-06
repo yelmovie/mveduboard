@@ -20,6 +20,7 @@ export const PointApp: React.FC<PointAppProps> = ({ onBack, isTeacherMode }) => 
   useEffect(() => {
     const init = async () => {
       try {
+        await studentService.preloadClassId();
         const fetched = await studentService.fetchRosterFromDb();
         if (fetched.length > 0) {
           studentService.saveRoster(fetched);

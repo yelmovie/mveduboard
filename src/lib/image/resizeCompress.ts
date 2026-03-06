@@ -1,4 +1,10 @@
-import { IMAGE_JPEG_QUALITY, IMAGE_MAX_WIDTH, IMAGE_OUTPUT_FORMAT } from '../../constants/limits';
+import {
+  IMAGE_JPEG_QUALITY,
+  IMAGE_MAX_WIDTH,
+  IMAGE_OUTPUT_FORMAT,
+  ALBUM_IMAGE_MAX_WIDTH,
+  ALBUM_IMAGE_JPEG_QUALITY,
+} from '../../constants/limits';
 
 const readAsDataUrl = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
@@ -8,9 +14,17 @@ const readAsDataUrl = (blob: Blob) =>
     reader.readAsDataURL(blob);
   });
 
-export const resizeAndCompressImage = async (file: File) => {
+export type ResizeOptions = {
+  maxWidth?: number;
+  quality?: number;
+};
+
+export const resizeAndCompressImage = async (file: File, options?: ResizeOptions) => {
+  const maxWidth = options?.maxWidth ?? IMAGE_MAX_WIDTH;
+  const quality = options?.quality ?? IMAGE_JPEG_QUALITY;
+
   const bitmap = await createImageBitmap(file);
-  const scale = bitmap.width > IMAGE_MAX_WIDTH ? IMAGE_MAX_WIDTH / bitmap.width : 1;
+  const scale = bitmap.width > maxWidth ? maxWidth / bitmap.width : 1;
   const targetWidth = Math.round(bitmap.width * scale);
   const targetHeight = Math.round(bitmap.height * scale);
 
@@ -33,7 +47,7 @@ export const resizeAndCompressImage = async (file: File) => {
         resolve(result);
       },
       IMAGE_OUTPUT_FORMAT,
-      IMAGE_JPEG_QUALITY
+      quality
     );
   });
 
@@ -45,6 +59,14 @@ export const resizeAndCompressImage = async (file: File) => {
     width: targetWidth,
     height: targetHeight,
   };
+};
+
+/** 사진첩 일괄 업로드용: 자동 화질 개선·축소(해상도·용량)로 업로드 시간 단축 */
+export const resizeAndCompressImageForAlbum = async (file: File) => {
+  return resizeAndCompressImage(file, {
+    maxWidth: ALBUM_IMAGE_MAX_WIDTH,
+    quality: ALBUM_IMAGE_JPEG_QUALITY,
+  });
 };
 
 // NOTE: EXIF 방향 정보는 브라우저 기본 API만으로 안정적으로 보정하기 어렵습니다.

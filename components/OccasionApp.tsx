@@ -37,6 +37,13 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
   const [nbVideoFile, setNbVideoFile] = useState<{ name: string; type: string; dataUrl: string } | null>(null);
   const [nbInfographicImage, setNbInfographicImage] = useState<{ name: string; type: string; dataUrl: string } | null>(null);
 
+  // 퀴즈 입력 방식: 직접 입력 | 아티팩트 링크
+  const [quizInputMode, setQuizInputMode] = useState<'manual' | 'artifact'>('manual');
+  const [artifactLinkUrl, setArtifactLinkUrl] = useState('');
+  const [artifactJsonPaste, setArtifactJsonPaste] = useState('');
+  const [artifactLoading, setArtifactLoading] = useState(false);
+  const [artifactError, setArtifactError] = useState('');
+
   // Simple Upload State
   const [upTitle, setUpTitle] = useState('');
   const [upLink, setUpLink] = useState('');
@@ -209,6 +216,68 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
           (newQuizzes[idx] as any)[field] = value;
       }
       setNbQuizzes(newQuizzes);
+  };
+
+  // 아티팩트/외부 데이터를 OccasionQuiz[] 형식으로 정규화 (options 4개, answer 0~3)
+  const normalizeQuizzes = (raw: unknown): OccasionQuiz[] => {
+      const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && 'quizzes' in raw && Array.isArray((raw as { quizzes: unknown }).quizzes)) ? (raw as { quizzes: unknown[] }).quizzes : [];
+      return list.map((item: unknown) => {
+          const o = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+          const question = String(o.question ?? o.q ?? '');
+          let options = Array.isArray(o.options) ? (o.options as unknown[]).map(x => String(x ?? '')) : [];
+          if (options.length < 4) options = [...options, ...Array(4 - options.length).fill('')];
+          options = options.slice(0, 4);
+          let answer = Number(o.answer ?? o.correct ?? 0);
+          if (answer < 0 || answer >= options.length) answer = 0;
+          return { question, options, answer };
+      }).filter(q => q.question.trim() !== '');
+  };
+
+  const handleFetchFromArtifactLink = async () => {
+      const url = artifactLinkUrl.trim();
+      if (!url) {
+          setArtifactError('아티팩트 링크 또는 JSON URL을 입력해주세요.');
+          return;
+      }
+      setArtifactLoading(true);
+      setArtifactError('');
+      try {
+          const res = await fetch(url, { mode: 'cors' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (data?.quizzes ?? data?.items ?? []);
+          const normalized = normalizeQuizzes(list.length ? { quizzes: list } : data);
+          if (normalized.length > 0) {
+              setNbQuizzes(normalized);
+              setArtifactError('');
+          } else {
+              setArtifactError('응답에서 퀴즈 데이터를 찾을 수 없습니다. JSON 형식: { "quizzes": [ { "question": "...", "options": ["a","b","c","d"], "answer": 0 } ] }');
+          }
+      } catch {
+          setArtifactError('링크에서 불러올 수 없습니다. (CORS/네트워크 제한일 수 있습니다.) 아래 "JSON 직접 붙여넣기"를 이용해 주세요.');
+      } finally {
+          setArtifactLoading(false);
+      }
+  };
+
+  const handleApplyArtifactJson = () => {
+      const text = artifactJsonPaste.trim();
+      if (!text) {
+          setArtifactError('JSON 내용을 붙여넣어 주세요.');
+          return;
+      }
+      setArtifactError('');
+      try {
+          const data = JSON.parse(text);
+          const normalized = normalizeQuizzes(data);
+          if (normalized.length > 0) {
+              setNbQuizzes(normalized);
+          } else {
+              setArtifactError('유효한 퀴즈 항목이 없습니다.');
+          }
+      } catch {
+          setArtifactError('올바른 JSON 형식이 아닙니다. 예: { "quizzes": [ { "question": "문제", "options": ["1","2","3","4"], "answer": 0 } ] }');
+      }
   };
 
   const readFileAsDataUrl = (file: File): Promise<string> =>
@@ -867,8 +936,68 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
                               <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
                                   <div className="flex justify-between items-center mb-4">
                                       <label className="text-lg font-bold text-purple-900">퀴즈 입력</label>
-                                      <button onClick={handleAddQuiz} className="text-sm bg-white border border-purple-200 px-3 py-1 rounded-lg text-purple-700 font-bold hover:bg-purple-100">+ 문제 추가</button>
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-sm text-gray-600">방식:</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => { setQuizInputMode('manual'); setArtifactError(''); }}
+                                            className={`text-sm px-3 py-1.5 rounded-lg font-medium ${quizInputMode === 'manual' ? 'bg-purple-600 text-white' : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-100'}`}
+                                          >
+                                              직접 입력
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => { setQuizInputMode('artifact'); setArtifactError(''); }}
+                                            className={`text-sm px-3 py-1.5 rounded-lg font-medium ${quizInputMode === 'artifact' ? 'bg-purple-600 text-white' : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-100'}`}
+                                          >
+                                              아티팩트 링크
+                                          </button>
+                                          {quizInputMode === 'manual' && (
+                                              <button onClick={handleAddQuiz} className="text-sm bg-white border border-purple-200 px-3 py-1 rounded-lg text-purple-700 font-bold hover:bg-purple-100">+ 문제 추가</button>
+                                          )}
+                                      </div>
                                   </div>
+
+                                  {quizInputMode === 'artifact' && (
+                                      <div className="mb-6 space-y-3 bg-white p-4 rounded-lg border border-purple-100">
+                                          <p className="text-sm text-gray-600">NotebookLM 아티팩트 링크 또는 퀴즈 JSON을 반환하는 URL을 입력하세요.</p>
+                                          <div className="flex gap-2">
+                                              <input
+                                                type="url"
+                                                value={artifactLinkUrl}
+                                                onChange={e => { setArtifactLinkUrl(e.target.value); setArtifactError(''); }}
+                                                placeholder="https://... (아티팩트 링크 또는 JSON URL)"
+                                                className="flex-1 border rounded-lg p-2 text-sm focus:ring-2 focus:ring-purple-500"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={handleFetchFromArtifactLink}
+                                                disabled={artifactLoading}
+                                                className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 shrink-0"
+                                              >
+                                                  {artifactLoading ? '불러오는 중…' : '링크에서 불러오기'}
+                                              </button>
+                                          </div>
+                                          {artifactError && (
+                                              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">{artifactError}</p>
+                                          )}
+                                          <details className="text-sm">
+                                              <summary className="cursor-pointer text-purple-700 font-medium">JSON 직접 붙여넣기 (링크가 안 될 때)</summary>
+                                              <div className="mt-2 space-y-2">
+                                                  <textarea
+                                                    value={artifactJsonPaste}
+                                                    onChange={e => setArtifactJsonPaste(e.target.value)}
+                                                    placeholder='{"quizzes":[{"question":"문제 내용","options":["보기1","보기2","보기3","보기4"],"answer":0}]}'
+                                                    className="w-full border rounded-lg p-2 h-24 text-xs font-mono"
+                                                  />
+                                                  <button type="button" onClick={handleApplyArtifactJson} className="bg-purple-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-600">
+                                                      JSON 적용
+                                                  </button>
+                                              </div>
+                                          </details>
+                                      </div>
+                                  )}
+
                                   <div className="space-y-6">
                                       {nbQuizzes.map((q, idx) => (
                                           <div key={idx} className="bg-white p-4 rounded-lg shadow-sm">

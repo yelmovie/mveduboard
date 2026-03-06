@@ -209,7 +209,10 @@ export const OmrApp: React.FC<OmrAppProps> = ({ isTeacherMode, student }) => {
 
   useEffect(() => {
     const run = async () => {
-      try { await studentService.fetchRosterFromDb(); } catch {}
+      try {
+        await studentService.preloadClassId();
+        await studentService.fetchRosterFromDb();
+      } catch {}
       const check = await checkOmrTables();
       if (!check.ok && check.error) {
         const { status, code, table, message } = check.error;
@@ -350,7 +353,12 @@ export const OmrApp: React.FC<OmrAppProps> = ({ isTeacherMode, student }) => {
       const message = passed
         ? `점수 ${score}점입니다. 통과했습니다.`
         : `점수 ${score}점입니다. ${PASS_SCORE_PERCENT}점 이상이어야 통과합니다.`;
-      setFeedback({ ...res, message });
+      setFeedback({
+        mode: res?.mode ?? 'wrong_numbers',
+        wrongNumbers: res?.wrong_numbers ?? undefined,
+        wrongCount: res?.wrong_count ?? undefined,
+        message,
+      });
       setSubmitState(passed ? 'completed' : 'idle');
       await refreshList();
     } catch (err: any) {

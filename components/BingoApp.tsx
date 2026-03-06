@@ -75,10 +75,10 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
   const [revealedBoard, setRevealedBoard] = useState<BingoRoomBoard | null>(null);
   const [revealLines, setRevealLines] = useState<ReturnType<typeof computeCompletedLines>>([]);
   const [myLines, setMyLines] = useState<ReturnType<typeof computeCompletedLines>>([]);
-  const [joinCode, setJoinCode] = useState('');
   const [displayName, setDisplayName] = useState(student?.nickname || '');
   const [joinError, setJoinError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [studentClassId, setStudentClassId] = useState<string | null>(null);
   const [studentView, setStudentView] = useState<'public' | 'my'>('public');
   const [layoutDraft, setLayoutDraft] = useState<string[]>([]);
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
@@ -116,9 +116,23 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
   // Preload roster from DB
   useEffect(() => {
     if (isTeacherMode) {
-      studentService.fetchRosterFromDb().catch(() => {});
+      studentService.preloadClassId().then(() => studentService.fetchRosterFromDb().catch(() => {}));
     }
   }, [isTeacherMode]);
+
+  // 학생 로비: 학급 ID 로드 (학급 구성원 참가용)
+  useEffect(() => {
+    if (!isSupabaseEnabled || isTeacherMode || mode !== 'lobby') return;
+    (async () => {
+      try {
+        const { getCurrentUserProfile } = await import('../src/lib/supabase/auth');
+        const profile = await getCurrentUserProfile();
+        setStudentClassId(profile?.class_id ?? null);
+      } catch {
+        setStudentClassId(null);
+      }
+    })();
+  }, [isSupabaseEnabled, isTeacherMode, mode]);
 
   // Init
   useEffect(() => {
@@ -274,11 +288,18 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
     if (isSupabaseEnabled) {
       const hostName = displayName.trim() || '선생님';
       setJoinError('');
+      let classId: string | null = null;
+      try {
+        const { getCurrentUserProfile } = await import('../src/lib/supabase/auth');
+        const profile = await getCurrentUserProfile();
+        classId = profile?.class_id ?? null;
+      } catch {}
       bingoRealtime.createRoom({
         title: form.title.trim(),
         size: form.size,
         words,
         hostUserId: null,
+        classId,
       })
         .then(async (newRoom) => {
           setRoom(newRoom);
@@ -378,7 +399,7 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
 
   const handleJoinClassGame = () => {
       if (isSupabaseEnabled) {
-          handleJoinRoomByCode();
+          handleJoinClassRoom();
           return;
       }
       if (!student) {
@@ -392,14 +413,10 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
       setMode('class_game');
   };
 
-  const handleJoinRoomByCode = async () => {
-      if (!isSupabaseEnabled) return;
-      const code = joinCode.trim().toUpperCase();
+  /** 학급으로 참가 (코드 없이 학급 구성원으로 입장) */
+  const handleJoinClassRoom = async () => {
+      if (!isSupabaseEnabled || !studentClassId) return;
       const name = displayName.trim();
-      if (!code) {
-          setJoinError('참여 코드를 입력해주세요.');
-          return;
-      }
       if (!name) {
           setJoinError('이름(닉네임)을 입력해주세요.');
           return;
@@ -407,17 +424,13 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
       setJoinError('');
       setIsJoining(true);
       try {
-          const foundRoom = await bingoRealtime.getRoomByCode(code);
+          const foundRoom = await bingoRealtime.getRoomByClassId(studentClassId);
           if (!foundRoom) {
-              setJoinError('방을 찾을 수 없습니다. 코드를 확인해주세요.');
+              setJoinError('진행 중인 학급 빙고가 없습니다. 선생님이 게임을 시작하면 참가할 수 있어요.');
               return;
           }
           if (foundRoom.status !== BINGO_ROOM_STATUS.open && foundRoom.status !== BINGO_ROOM_STATUS.running) {
               setJoinError('참가가 아직 허용되지 않았습니다.');
-              return;
-          }
-          if (foundRoom.status === BINGO_ROOM_STATUS.ended) {
-              setJoinError('종료된 방입니다.');
               return;
           }
           const existing = await bingoRealtime.getPlayers(foundRoom.id);
@@ -449,7 +462,7 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
           await loadRoomData(foundRoom.id, player.id);
           setMode('class_game');
       } catch (e: any) {
-          console.error('[bingo] joinRoom error', e);
+          console.error('[bingo] joinClassRoom error', e);
           if (String(e?.message || '').toLowerCase().includes('duplicate')) {
             setJoinError('이미 사용 중인 이름입니다.');
           } else {
@@ -775,15 +788,6 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
                   <div className="space-y-4">
                       <div className="space-y-3">
                           <div className="flex flex-col gap-2 text-left">
-                              <label className="text-sm text-indigo-200 font-semibold">참여 코드</label>
-                              <input
-                                value={joinCode}
-                                onChange={(e) => setJoinCode(e.currentTarget.value.toUpperCase())}
-                                placeholder="예: A1B2C3"
-                                className="w-full px-4 py-3 rounded-xl bg-slate-900/60 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-violet-400 text-base"
-                              />
-                          </div>
-                          <div className="flex flex-col gap-2 text-left">
                               <label className="text-sm text-indigo-200 font-semibold">이름(닉네임)</label>
                               <input
                                 value={displayName}
@@ -795,20 +799,36 @@ export const BingoApp: React.FC<BingoAppProps> = ({ onBack, isTeacherMode, stude
                           {joinError && (
                               <div className="text-sm text-red-300">{joinError}</div>
                           )}
-                          <button 
-                            onClick={handleJoinClassGame}
-                            disabled={isSupabaseEnabled ? isJoining : !classGame}
-                            className={`w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all border-b-4 active:border-b-0 active:translate-y-1
-                                ${isSupabaseEnabled
-                                    ? 'bg-violet-600 border-violet-800 text-white shadow-[0_0_20px_rgba(139,92,246,0.5)] hover:bg-violet-500'
-                                    : classGame 
-                                        ? 'bg-violet-600 border-violet-800 text-white shadow-[0_0_20px_rgba(139,92,246,0.5)] hover:bg-violet-500' 
-                                        : 'bg-slate-700 border-slate-800 text-slate-400 cursor-not-allowed'}
-                            `}
-                          >
-                              <Monitor size={24} />
-                              {isSupabaseEnabled ? (isJoining ? '참가 중...' : '코드로 참가') : (classGame ? '선생님 게임 입장' : '선생님 게임 대기중...')}
-                          </button>
+                          {isSupabaseEnabled ? (
+                              <>
+                                  <button
+                                    onClick={handleJoinClassGame}
+                                    disabled={isJoining || !studentClassId}
+                                    className={`w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all border-b-4 active:border-b-0 active:translate-y-1
+                                        ${studentClassId && !isJoining
+                                            ? 'bg-violet-600 border-violet-800 text-white shadow-[0_0_20px_rgba(139,92,246,0.5)] hover:bg-violet-500'
+                                            : 'bg-slate-700 border-slate-800 text-slate-400 cursor-not-allowed'}
+                                    `}
+                                  >
+                                      <Monitor size={24} />
+                                      {isJoining ? '참가 중...' : '우리 반 빙고 참가'}
+                                  </button>
+                                  {!studentClassId && (
+                                      <p className="text-sm text-indigo-200/80">학급에 참여한 후 우리 반 빙고에 참가할 수 있어요.</p>
+                                  )}
+                              </>
+                          ) : (
+                              <button
+                                onClick={handleJoinClassGame}
+                                disabled={!classGame}
+                                className={`w-full py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all border-b-4 active:border-b-0 active:translate-y-1
+                                    ${classGame ? 'bg-violet-600 border-violet-800 text-white shadow-[0_0_20px_rgba(139,92,246,0.5)] hover:bg-violet-500' : 'bg-slate-700 border-slate-800 text-slate-400 cursor-not-allowed'}
+                                `}
+                              >
+                                  <Monitor size={24} />
+                                  {classGame ? '선생님 게임 입장' : '선생님 게임 대기중...'}
+                              </button>
+                          )}
                       </div>
 
                       <div className="flex items-center gap-2 text-indigo-300 text-sm">

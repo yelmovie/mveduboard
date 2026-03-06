@@ -256,7 +256,16 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
                         <MessageCircle className="text-emerald-600" /> 쪽지함
                     </h1>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                        type="button"
+                        onClick={() => setShowStudentList((prev) => !prev)}
+                        className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg font-bold hover:bg-gray-200 text-sm flex items-center gap-2"
+                        title={showStudentList ? '학생 명단 숨기기' : '학생 명단 보기'}
+                    >
+                        {showStudentList ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
+                        <span className="hidden sm:inline">{showStudentList ? '명단 숨기기' : '명단 보기'}</span>
+                    </button>
                     <button
                         onClick={handleSaveMessages}
                         disabled={isSaving}
@@ -283,8 +292,8 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
             </header>
           )}
 
-          <div className={`flex-1 flex overflow-hidden w-full ${embedded ? '' : 'max-w-7xl mx-auto sm:p-4'}`}>
-              <div className={`bg-white shadow-xl w-full flex overflow-hidden border border-gray-200 ${embedded ? '' : 'rounded-2xl'}`}>
+          <div className={`flex-1 flex min-h-0 overflow-hidden w-full ${embedded ? '' : 'max-w-7xl mx-auto sm:p-4'}`}>
+              <div className={`bg-white shadow-xl w-full flex min-h-0 overflow-hidden border border-gray-200 ${embedded ? '' : 'rounded-2xl'}`}>
                   {/* Toggle: Show list when hidden */}
                   {!showStudentList && (
                       <button
@@ -321,13 +330,13 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
                               </button>
                           </div>
                       </div>
-                      <div className="flex-1 overflow-y-auto">
+                      <div className="flex-1 min-h-0 overflow-y-auto">
                           {studentList.filter(name => name.includes(search)).map(name => {
                               const unreadCount = messageService.getUnreadCount(name, 'teacher');
                               return (
                                   <button
                                     key={name}
-                                    onClick={() => setActiveStudent(name)}
+                                    onClick={() => { setActiveStudent(name); setShowStudentList(false); }}
                                     className={`w-full p-4 flex items-center gap-3 hover:bg-gray-100 transition-colors border-b border-gray-100 text-left ${activeStudent === name ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : 'border-l-4 border-l-transparent'}`}
                                   >
                                       <div className="w-10 h-10 bg-white border border-gray-200 rounded-full flex items-center justify-center text-gray-500 shrink-0">
@@ -349,8 +358,8 @@ export const MessageApp: React.FC<MessageAppProps> = ({ onBack, isTeacherMode, s
                   </div>
                   )}
 
-                  {/* Main Chat Area */}
-                  <div className={`flex-1 flex flex-col min-w-0 ${!activeStudent ? 'hidden sm:flex' : 'flex'}`}>
+                  {/* Main Chat Area - min-h-0 so flex shrink allows overflow scroll */}
+                  <div className={`flex-1 flex flex-col min-w-0 min-h-0 ${!activeStudent ? 'hidden sm:flex' : 'flex'}`}>
                       {activeStudent ? (
                           <ChatRoom 
                             title={activeStudent}

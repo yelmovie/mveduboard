@@ -15,6 +15,7 @@ export type BingoRoomRecord = {
   code: string;
   title: string;
   host_user_id: string | null;
+  class_id: string | null;
   size: number;
   words: string[];
   status: BingoRoomStatus;
@@ -52,6 +53,7 @@ export const createRoom = async (payload: {
   size: number;
   words: string[];
   hostUserId?: string | null;
+  classId?: string | null;
 }) => {
   ensureClient();
   const maxRetry = 5;
@@ -64,6 +66,7 @@ export const createRoom = async (payload: {
         code,
         title: payload.title,
         host_user_id: payload.hostUserId ?? null,
+        class_id: payload.classId ?? null,
         size: payload.size,
         words: payload.words,
         status: BINGO_ROOM_STATUS.draft,
@@ -83,6 +86,21 @@ export const getRoomByCode = async (code: string) => {
     .from(BINGO_ROOM_TABLES.rooms)
     .select('*')
     .eq('code', code)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as BingoRoomRecord | null;
+};
+
+/** 학급의 참가 가능한 방 중 가장 최근 방 1개 반환 (open 또는 running) */
+export const getRoomByClassId = async (classId: string): Promise<BingoRoomRecord | null> => {
+  ensureClient();
+  const { data, error } = await supabase
+    .from(BINGO_ROOM_TABLES.rooms)
+    .select('*')
+    .eq('class_id', classId)
+    .in('status', [BINGO_ROOM_STATUS.open, BINGO_ROOM_STATUS.running])
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data as BingoRoomRecord | null;

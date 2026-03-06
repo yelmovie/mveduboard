@@ -76,7 +76,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     "'칭찬 쿠폰'을 커스텀하여 아이들에게 확실한 동기 부여를 해주세요.",
     "'집중 타이머'의 뽀모도로 모드는 아이들의 집중력을 높여줍니다.",
     "'역할 히스토리'를 저장하면 이전에 맡았던 역할을 피해 배정할 수 있어요.",
-    "'시간표'에 과목별 색상을 다르게 지정하면 한눈에 알아보기 쉬워요.",
     "'알림장' 내용을 미리 작성해두고 아침 조회 시간에 활용하면 편리합니다.",
     "'진로 월드컵'으로 아이들의 흥미와 적성을 재미있게 탐색해보세요.",
     "'단어 찾기' 퍼즐을 AI로 생성하여 수업 시간에 활용해보세요.",
@@ -97,7 +96,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const SLIDES = [
     { title: "우리 반의 하루를 시작해요!", desc: "오늘도 즐겁고 행복한 학교 생활 되세요 🏫", icon: Trophy },
-    { title: "학교 계획표", desc: "급식, 시간표, 주간학습안내를 한눈에 확인해요 📅", icon: CalendarRange },
+    { title: "학교 계획표", desc: "급식, 주간학습안내를 한눈에 확인해요 📅", icon: CalendarRange },
     { title: "우리학급게시판", desc: "친구들과 소통하고 멋진 작품을 공유해요 🎨", icon: Layout },
     { title: "학급운영도구", desc: "1인 1역, 포인트, 쿠폰으로 즐거운 우리 반 ✨", icon: Settings },
     { title: "학습보조도구", desc: "타이머, 발표 뽑기, 빙고 게임으로 수업을 재미있게 🎲", icon: Briefcase },
@@ -175,7 +174,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         category: 'MANAGEMENT', 
         image: '/images/button1.png',
         overlay: 'bg-pink-400', 
-        description: '주간학습, 시간표, 급식, 월간일정', 
+        description: '주간학습, 급식, 월간일정', 
         tags: ['필수', '정보'] 
     },
     { 

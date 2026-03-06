@@ -12,6 +12,10 @@ export interface ClassStudent {
   number: number;
   name: string;
   gender?: 'male' | 'female';
+  birthDate?: string;
+  previousGradeClass?: string;
+  remarks?: string;
+  siblings?: string;
   executiveRole?: 'president' | 'vice';
 }
 
@@ -313,6 +317,7 @@ export interface BingoRoom {
   code: string;
   title: string;
   host_user_id: string | null;
+  class_id?: string | null;
   size: BingoSize;
   words: string[];
   status: BingoRoomStatus;

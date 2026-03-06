@@ -136,7 +136,10 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
   useEffect(() => {
     if (!isTeacherMode) return;
     const loadRoster = async () => {
-      try { await studentService.fetchRosterFromDb(); } catch {}
+      try {
+        await studentService.preloadClassId();
+        await studentService.fetchRosterFromDb();
+      } catch {}
       const roster = drawService.getClassRoster();
       if (roster.length > 0 && nameList.length === 0) {
         setNameList(roster);
@@ -158,6 +161,13 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
       return () => clearInterval(interval);
     }
   }, [isTeacherMode]);
+
+  // 뽑을 인원이 남은 인원보다 크면 자동 조정
+  useEffect(() => {
+    if (isTeacherMode && pool.length > 0 && drawCount > pool.length) {
+      setDrawCount(pool.length);
+    }
+  }, [isTeacherMode, pool.length, drawCount]);
 
   // Sync Teacher state to cloud
   useEffect(() => {
@@ -184,7 +194,10 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
   // --- Handlers ---
 
   const handleAddClassRoster = async () => {
-    try { await studentService.fetchRosterFromDb(); } catch {}
+    try {
+      await studentService.preloadClassId();
+      await studentService.fetchRosterFromDb();
+    } catch {}
     const roster = drawService.getClassRoster();
     setNameList(roster);
     setNameInput(roster.join('\n'));
@@ -346,14 +359,21 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
                 {/* Settings */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                        <label className="text-sm font-bold text-gray-600">뽑을 인원</label>
+                        <label className="text-sm font-bold text-gray-600">뽑을 인원 (기본값)</label>
                         <div className="flex items-center gap-3">
                              <input 
-                                type="range" min="1" max="5" 
-                                value={drawCount} onChange={(e) => setDrawCount(parseInt(e.target.value))}
+                                type="range" min="1" max="20" 
+                                value={Math.min(20, Math.max(1, drawCount))} 
+                                onChange={(e) => setDrawCount(parseInt(e.target.value) || 1)}
                                 className="flex-1 accent-violet-600 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                             />
-                            <span className="text-xl font-black text-violet-600 w-8 text-center">{drawCount}</span>
+                            <input 
+                                type="number" min={1} max={20} 
+                                value={drawCount} 
+                                onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setDrawCount(Math.min(20, Math.max(1, v))); }}
+                                className="w-14 text-center text-xl font-black text-violet-600 border border-violet-200 rounded-lg py-1"
+                            />
+                            <span className="text-gray-600 font-medium">명</span>
                         </div>
                     </div>
                     
@@ -483,31 +503,45 @@ export const DrawApp: React.FC<DrawAppProps> = ({ onBack, isTeacherMode }) => {
                 )}
             </div>
 
-            {/* Teacher Controls Bottom */}
+            {/* Teacher Controls Bottom: 뽑을 인원 입력 + 발표자 뽑기 */}
             {isTeacherMode && (
-                <div className="mt-12 flex gap-4 z-20">
-                    <button 
-                        onClick={handleResetPool}
-                        disabled={currentAnimating}
-                        className="w-16 h-16 rounded-full bg-slate-800 border border-slate-600 text-slate-400 hover:text-white hover:border-white hover:bg-slate-700 flex items-center justify-center transition-all disabled:opacity-50"
-                        title="초기화"
-                    >
-                        <RefreshCw size={24} />
-                    </button>
-                    
-                    <button 
-                        onClick={handlePick}
-                        disabled={currentAnimating || pool.length === 0}
-                        className={`
-                            px-12 py-4 rounded-full text-2xl font-black shadow-[0_0_30px_rgba(124,58,237,0.6)] transition-all transform hover:scale-105 active:scale-95 flex items-center gap-3 border-2 border-violet-400
-                            ${currentAnimating || pool.length === 0 
-                                ? 'bg-slate-700 text-slate-500 cursor-not-allowed border-slate-600' 
-                                : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-500 hover:to-indigo-500'}
-                        `}
-                    >
-                        <Wand2 size={32} className={currentAnimating ? 'animate-spin' : ''} />
-                        {currentAnimating ? '주문 외우는 중...' : '발표자 뽑기'}
-                    </button>
+                <div className="mt-12 flex flex-col items-center gap-4 z-20">
+                    <div className="flex items-center gap-3 bg-black/30 backdrop-blur-md rounded-2xl border border-white/10 px-6 py-3">
+                        <span className="text-white/90 font-bold">뽑을 인원</span>
+                        <input 
+                            type="number" 
+                            min={1} 
+                            max={Math.max(1, pool.length)} 
+                            value={drawCount} 
+                            onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setDrawCount(Math.min(Math.max(1, pool.length), Math.max(1, v))); }}
+                            className="w-16 text-center text-xl font-black text-violet-300 bg-slate-800/80 border border-white/20 rounded-xl py-2 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                        />
+                        <span className="text-white/80 font-medium">명</span>
+                    </div>
+                    <div className="flex gap-4">
+                        <button 
+                            onClick={handleResetPool}
+                            disabled={currentAnimating}
+                            className="w-16 h-16 rounded-full bg-slate-800 border border-slate-600 text-slate-400 hover:text-white hover:border-white hover:bg-slate-700 flex items-center justify-center transition-all disabled:opacity-50"
+                            title="초기화"
+                        >
+                            <RefreshCw size={24} />
+                        </button>
+                        
+                        <button 
+                            onClick={handlePick}
+                            disabled={currentAnimating || pool.length === 0}
+                            className={`
+                                px-12 py-4 rounded-full text-2xl font-black shadow-[0_0_30px_rgba(124,58,237,0.6)] transition-all transform hover:scale-105 active:scale-95 flex items-center gap-3 border-2 border-violet-400
+                                ${currentAnimating || pool.length === 0 
+                                    ? 'bg-slate-700 text-slate-500 cursor-not-allowed border-slate-600' 
+                                    : 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-500 hover:to-indigo-500'}
+                            `}
+                        >
+                            <Wand2 size={32} className={currentAnimating ? 'animate-spin' : ''} />
+                            {currentAnimating ? '주문 외우는 중...' : '발표자 뽑기'}
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

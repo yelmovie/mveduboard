@@ -25,19 +25,50 @@ export const RoleApp: React.FC<RoleAppProps> = ({ onBack, isTeacherMode }) => {
     loadData();
   }, [isTeacherMode]);
 
+  const LOAD_TIMEOUT_MS = 8000;
+
   const loadData = async () => {
     try {
-      await studentService.fetchRosterFromDb();
-    } catch { /* fallback to localStorage */ }
-    try { await roleService.loadRoleDataAsync(); } catch {}
-    const d = roleService.getRoleData();
-    setData(d);
-    setRoleInput(d.roles.map(r => r.title).join('\n'));
+      await Promise.race([
+        (async () => {
+          try {
+            await studentService.preloadClassId();
+            await studentService.fetchRosterFromDb();
+          } catch {
+            /* fallback to localStorage */
+          }
+          try {
+            await roleService.loadRoleDataAsync();
+          } catch {
+            /* fallback to localStorage */
+          }
+        })(),
+        new Promise<void>((resolve) => setTimeout(resolve, LOAD_TIMEOUT_MS)),
+      ]);
+    } catch {
+      /* ignore */
+    }
+    try {
+      const d = roleService.getRoleData();
+      setData(d);
+      setRoleInput(d.roles.map((r) => r.title).join('\n'));
+    } catch (e) {
+      console.error('[RoleApp] getRoleData error', e);
+      const fallback: RoleData = {
+        students: [],
+        roles: roleService.getInitialRoles().map((title) => ({ id: `role-${title}`, title })),
+        currentAssignments: [],
+        history: [],
+      };
+      setData(fallback);
+      setRoleInput(fallback.roles.map((r) => r.title).join('\n'));
+    }
   };
 
   const handleSyncFromRoster = async () => {
     setIsSyncing(true);
     try {
+      await studentService.preloadClassId();
       await studentService.fetchRosterFromDb();
       const d = roleService.getRoleData();
       setData(d);
