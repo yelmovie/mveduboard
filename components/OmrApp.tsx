@@ -688,20 +688,31 @@ export const OmrApp: React.FC<OmrAppProps> = ({ isTeacherMode, student }) => {
 
             <div className="flex gap-2">
               <button
-                onClick={() => handleSave(false)}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setTimeout(() => handleSave(false), 0);
+                }}
                 disabled={saving || !isAuthed}
                 className="bg-slate-900 text-white rounded-xl px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-60"
               >
                 <Save size={16} /> 저장
               </button>
               <button
-                onClick={() => handleSave(true)}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setTimeout(() => handleSave(true), 0);
+                }}
                 disabled={saving || !isAuthed}
                 className="bg-emerald-600 text-white rounded-xl px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-60"
               >
                 <CheckCircle size={16} /> 저장 & 공개
               </button>
               <button
+                type="button"
                 onClick={() => setView('list')}
                 className="border border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-500"
               >
