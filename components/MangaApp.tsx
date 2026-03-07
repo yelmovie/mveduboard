@@ -553,7 +553,7 @@ export const MangaApp: React.FC<MangaAppProps> = ({ onBack, isTeacherMode, stude
                         {/* Show all if teacher, only approved if student */}
                         {episodes.filter(e => isTeacherMode || e.status === 'approved' || (student && e.studentId === student.id)).map(ep => {
                             const task = tasks.find(t => t.id === ep.taskId);
-                            const thumb = ep.panels[0].imageUrl || 'https://via.placeholder.com/150?text=No+Image';
+                            const thumb = ep.panels[0].imageUrl || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="0 0 150 150"%3E%3Crect fill="%23e5e7eb" width="150" height="150"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%239ca3af" font-size="12"%3ENo Image%3C/text%3E%3C/svg%3E';
                             const isPending = ep.status === 'pending';
                             
                             return (

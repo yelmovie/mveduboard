@@ -697,7 +697,7 @@ export const OmrApp: React.FC<OmrAppProps> = ({ isTeacherMode, student }) => {
                 disabled={saving || !isAuthed}
                 className="bg-slate-900 text-white rounded-xl px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-60"
               >
-                <Save size={16} /> 저장
+                <Save size={16} /> 정답저장
               </button>
               <button
                 type="button"
@@ -709,7 +709,7 @@ export const OmrApp: React.FC<OmrAppProps> = ({ isTeacherMode, student }) => {
                 disabled={saving || !isAuthed}
                 className="bg-emerald-600 text-white rounded-xl px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-60"
               >
-                <CheckCircle size={16} /> 저장 & 공개
+                <CheckCircle size={16} /> 학생 결과확인
               </button>
               <button
                 type="button"

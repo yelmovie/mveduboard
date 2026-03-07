@@ -7,13 +7,37 @@ import { loadWithSupabaseFallback, saveClassColumn } from '../lib/classDataSync'
 const LS_KEY = 'edu_seat_layout';
 const INIT_KEY = 'edu_seat_initialized';
 const HISTORY_KEY = 'edu_seat_history';
+const ROWS_DEFAULT = 6;
+const COLS_DEFAULT = 9;
+
+/** 5x8 레이아웃을 6x9로 확장하여 반환하고 저장 */
+function migrate58To69(layout: SeatLayout): SeatLayout {
+  if (layout.rows !== 5 || layout.cols !== 8) return layout;
+  const newTotal = ROWS_DEFAULT * COLS_DEFAULT;
+  const newSeatMap = Array(newTotal).fill(true);
+  const newAssignments: (SeatStudent | null)[] = Array(newTotal).fill(null);
+  const oldMap = layout.seatMap || Array(40).fill(true);
+  const oldAssignments = layout.assignments || [];
+  for (let i = 0; i < 40 && i < oldMap.length; i++) {
+    newSeatMap[i] = oldMap[i];
+    if (i < oldAssignments.length && oldAssignments[i]) newAssignments[i] = oldAssignments[i];
+  }
+  const migrated: SeatLayout = {
+    rows: ROWS_DEFAULT,
+    cols: COLS_DEFAULT,
+    assignments: newAssignments,
+    seatMap: newSeatMap,
+    updatedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(LS_KEY, JSON.stringify(migrated));
+  saveClassColumn('seat_data', migrated).catch(() => {});
+  return migrated;
+}
 
 const initializeSeat = () => {
     if (!localStorage.getItem(INIT_KEY)) {
         const roster = studentService.getRoster();
-        const rows = 6;
-        const cols = 9;
-        const total = rows * cols;
+        const total = ROWS_DEFAULT * COLS_DEFAULT;
         
         const seatMap = Array(total).fill(true);
         const assignments: (SeatStudent | null)[] = Array(total).fill(null);
@@ -23,8 +47,8 @@ const initializeSeat = () => {
         });
 
         const layout: SeatLayout = {
-            rows,
-            cols,
+            rows: ROWS_DEFAULT,
+            cols: COLS_DEFAULT,
             assignments,
             seatMap,
             updatedAt: new Date().toISOString()
@@ -39,12 +63,13 @@ export const getSeatLayout = (): SeatLayout | null => {
   initializeSeat();
   const stored = localStorage.getItem(LS_KEY);
   if (!stored) return null;
-  
-  const layout = JSON.parse(stored);
+
+  const layout: SeatLayout = JSON.parse(stored);
   if (!layout.seatMap) {
-      layout.seatMap = Array(layout.rows * layout.cols).fill(true);
+    layout.seatMap = Array(layout.rows * layout.cols).fill(true);
   }
-  return layout;
+  const migrated = migrate58To69(layout);
+  return migrated;
 };
 
 export const saveSeatLayout = (rows: number, cols: number, assignments: (SeatStudent | null)[], seatMap?: boolean[]) => {
@@ -75,7 +100,10 @@ export const loadSeatDataAsync = async (): Promise<void> => {
   );
   if (loaded && loaded.seatMap === undefined && loaded.rows && loaded.cols) {
     loaded.seatMap = Array(loaded.rows * loaded.cols).fill(true);
-    localStorage.setItem(LS_KEY, JSON.stringify(loaded));
+  }
+  if (loaded && loaded.rows === 5 && loaded.cols === 8) {
+    migrate58To69(loaded);
+    localStorage.setItem(INIT_KEY, 'true');
   }
 };
 

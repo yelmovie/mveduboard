@@ -6,6 +6,7 @@ import * as studyService from '../services/studyService';
 import type { MonthlyPlanData } from '../services/studyService';
 import { analyzeScheduleFromFile } from '../services/scheduleAnalyzer';
 import { LunchApp } from './LunchApp';
+import { getTeacherProfileDetails } from '../src/lib/supabase/auth';
 
 interface PlannerAppProps {
   onBack: () => void;
@@ -52,6 +53,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
   const monthlyFileRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [schoolNameForLunch, setSchoolNameForLunch] = useState<string>('');
 
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -61,6 +63,13 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
 
   useEffect(() => {
     void loadData();
+  }, [isTeacherMode]);
+
+  useEffect(() => {
+    if (!isTeacherMode) return;
+    getTeacherProfileDetails()
+      .then((d) => d?.schoolName && setSchoolNameForLunch(d.schoolName))
+      .catch(() => {});
   }, [isTeacherMode]);
 
   const loadData = async () => {
@@ -456,7 +465,7 @@ export const PlannerApp: React.FC<PlannerAppProps> = ({ onBack, isTeacherMode, s
                     )}
                 </div>
             )}
-            {activeTab === 'lunch' && <div className="flex-1 bg-white animate-fade-in-up overflow-hidden h-full"><LunchApp onBack={() => {}} isTeacherMode={isTeacherMode} embedded={true} /></div>}
+            {activeTab === 'lunch' && <div className="flex-1 bg-white animate-fade-in-up overflow-hidden h-full"><LunchApp onBack={() => {}} isTeacherMode={isTeacherMode} embedded={true} schoolName={schoolNameForLunch} /></div>}
         </main>
 
         {/* Toast notification */}

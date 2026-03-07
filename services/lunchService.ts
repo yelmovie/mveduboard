@@ -24,7 +24,7 @@ const initializeLunch = () => {
 
         const data: LunchData = {
             updatedAt: new Date().toISOString(),
-            imageUrl: 'https://via.placeholder.com/600x800?text=Lunch+Schedule',
+            imageUrl: '',
             menus: menus
         };
         

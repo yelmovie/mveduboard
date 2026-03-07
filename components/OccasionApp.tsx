@@ -25,24 +25,7 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
   const [selectedTopic, setSelectedTopic] = useState<OccasionTopic | CommonOccasionTopic | null>(null);
   
   // Modals
-  const [showNotebookModal, setShowNotebookModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  
-  // Create / NotebookLM State
-  const [nbStep, setNbStep] = useState(1);
-  const [nbUrl, setNbUrl] = useState('');
-  const [nbSummary, setNbSummary] = useState('');
-  const [nbQuizzes, setNbQuizzes] = useState<OccasionQuiz[]>([{ question: '', options: ['', '', '', ''], answer: 0 }]);
-  const [nbTitle, setNbTitle] = useState('');
-  const [nbVideoFile, setNbVideoFile] = useState<{ name: string; type: string; dataUrl: string } | null>(null);
-  const [nbInfographicImage, setNbInfographicImage] = useState<{ name: string; type: string; dataUrl: string } | null>(null);
-
-  // 퀴즈 입력 방식: 직접 입력 | 아티팩트 링크
-  const [quizInputMode, setQuizInputMode] = useState<'manual' | 'artifact'>('manual');
-  const [artifactLinkUrl, setArtifactLinkUrl] = useState('');
-  const [artifactJsonPaste, setArtifactJsonPaste] = useState('');
-  const [artifactLoading, setArtifactLoading] = useState(false);
-  const [artifactError, setArtifactError] = useState('');
 
   // Simple Upload State
   const [upTitle, setUpTitle] = useState('');
@@ -176,20 +159,7 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
       }
   };
 
-  // --- Creator & Upload Handlers ---
-
-  const handleOpenCreator = () => {
-      if (!selectedTopic) {
-          alert('주제를 먼저 선택해주세요.');
-          return;
-      }
-      setNbStep(1);
-      setNbUrl('');
-      setNbSummary('');
-      setNbQuizzes([{ question: '', options: ['', '', '', ''], answer: 0 }]);
-      setNbTitle(`${selectedTopic.title} 학습 자료`);
-      setShowNotebookModal(true);
-  };
+  // --- Upload Handlers ---
 
   const handleOpenUpload = () => {
       if (!selectedTopic) {
@@ -200,152 +170,6 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
       setUpLink('');
       setUpType('영상');
       setShowUploadModal(true);
-  };
-
-  const handleAddQuiz = () => {
-      setNbQuizzes([...nbQuizzes, { question: '', options: ['', '', '', ''], answer: 0 }]);
-  };
-
-  const updateQuiz = (idx: number, field: keyof OccasionQuiz | 'option', value: any, optIdx?: number) => {
-      const newQuizzes = [...nbQuizzes];
-      if (field === 'option' && typeof optIdx === 'number') {
-          newQuizzes[idx].options[optIdx] = value;
-      } else if (field === 'answer') {
-          newQuizzes[idx].answer = parseInt(value);
-      } else {
-          (newQuizzes[idx] as any)[field] = value;
-      }
-      setNbQuizzes(newQuizzes);
-  };
-
-  // 아티팩트/외부 데이터를 OccasionQuiz[] 형식으로 정규화 (options 4개, answer 0~3)
-  const normalizeQuizzes = (raw: unknown): OccasionQuiz[] => {
-      const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && 'quizzes' in raw && Array.isArray((raw as { quizzes: unknown }).quizzes)) ? (raw as { quizzes: unknown[] }).quizzes : [];
-      return list.map((item: unknown) => {
-          const o = item && typeof item === 'object' ? item as Record<string, unknown> : {};
-          const question = String(o.question ?? o.q ?? '');
-          let options = Array.isArray(o.options) ? (o.options as unknown[]).map(x => String(x ?? '')) : [];
-          if (options.length < 4) options = [...options, ...Array(4 - options.length).fill('')];
-          options = options.slice(0, 4);
-          let answer = Number(o.answer ?? o.correct ?? 0);
-          if (answer < 0 || answer >= options.length) answer = 0;
-          return { question, options, answer };
-      }).filter(q => q.question.trim() !== '');
-  };
-
-  const handleFetchFromArtifactLink = async () => {
-      const url = artifactLinkUrl.trim();
-      if (!url) {
-          setArtifactError('아티팩트 링크 또는 JSON URL을 입력해주세요.');
-          return;
-      }
-      setArtifactLoading(true);
-      setArtifactError('');
-      try {
-          const res = await fetch(url, { mode: 'cors' });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json();
-          const list = Array.isArray(data) ? data : (data?.quizzes ?? data?.items ?? []);
-          const normalized = normalizeQuizzes(list.length ? { quizzes: list } : data);
-          if (normalized.length > 0) {
-              setNbQuizzes(normalized);
-              setArtifactError('');
-          } else {
-              setArtifactError('응답에서 퀴즈 데이터를 찾을 수 없습니다. JSON 형식: { "quizzes": [ { "question": "...", "options": ["a","b","c","d"], "answer": 0 } ] }');
-          }
-      } catch {
-          setArtifactError('링크에서 불러올 수 없습니다. (CORS/네트워크 제한일 수 있습니다.) 아래 "JSON 직접 붙여넣기"를 이용해 주세요.');
-      } finally {
-          setArtifactLoading(false);
-      }
-  };
-
-  const handleApplyArtifactJson = () => {
-      const text = artifactJsonPaste.trim();
-      if (!text) {
-          setArtifactError('JSON 내용을 붙여넣어 주세요.');
-          return;
-      }
-      setArtifactError('');
-      try {
-          const data = JSON.parse(text);
-          const normalized = normalizeQuizzes(data);
-          if (normalized.length > 0) {
-              setNbQuizzes(normalized);
-          } else {
-              setArtifactError('유효한 퀴즈 항목이 없습니다.');
-          }
-      } catch {
-          setArtifactError('올바른 JSON 형식이 아닙니다. 예: { "quizzes": [ { "question": "문제", "options": ["1","2","3","4"], "answer": 0 } ] }');
-      }
-  };
-
-  const readFileAsDataUrl = (file: File): Promise<string> =>
-      new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ''));
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(file);
-      });
-
-  const handleVideoFileChange = async (file?: File) => {
-      if (!file) {
-          setNbVideoFile(null);
-          return;
-      }
-      const dataUrl = await readFileAsDataUrl(file);
-      setNbVideoFile({ name: file.name, type: file.type, dataUrl });
-  };
-
-  const handleInfographicChange = async (file?: File) => {
-      if (!file) {
-          setNbInfographicImage(null);
-          return;
-      }
-      const dataUrl = await readFileAsDataUrl(file);
-      setNbInfographicImage({ name: file.name, type: file.type, dataUrl });
-  };
-
-  const handleSaveNotebookMaterial = () => {
-      if (!selectedTopic) return;
-      if (!nbUrl.trim() && !nbVideoFile) {
-          alert('유튜브 주소 또는 동영상 파일 중 하나는 입력해주세요.');
-          return;
-      }
-      
-      const types = ['NotebookLM'];
-      if (nbUrl.trim() || nbVideoFile) types.push('영상');
-      if (nbInfographicImage) types.push('인포그래픽');
-      if (nbQuizzes.some((q) => q.question.trim())) types.push('퀴즈');
-
-      const ytId = nbUrl.trim() ? getYouTubeID(nbUrl) : null;
-      const thumbnailUrl =
-          nbInfographicImage?.dataUrl ||
-          (ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : '') ||
-          'https://via.placeholder.com/300x200?text=NotebookLM';
-
-      const newMaterial: OccasionMaterial = {
-          id: generateUUID(),
-          title: nbTitle,
-          types,
-          thumbnailUrl,
-          topic: selectedTopic.title,
-          author: '선생님 (NotebookLM)',
-          notebookLM: {
-              youtubeUrl: nbUrl,
-              summary: nbSummary,
-              quizzes: nbQuizzes.filter(q => q.question.trim() !== ''),
-              videoFile: nbVideoFile || undefined,
-              infographicImage: nbInfographicImage || undefined,
-          }
-      };
-
-      const monthKey = tab === 'monthly' ? selectedMonth : 'common';
-      occasionService.saveCustomMaterial(monthKey, selectedTopic.id, newMaterial);
-      
-      setShowNotebookModal(false);
-      loadData(); 
-      alert('자료가 저장되었습니다!');
   };
 
   const handleSaveSimpleUpload = () => {
@@ -368,7 +192,7 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
           types: [upType],
           thumbnailUrl: upType === '영상' 
             ? `https://img.youtube.com/vi/${getYouTubeID(upLink)}/mqdefault.jpg` 
-            : 'https://via.placeholder.com/300x200?text=Uploaded+File',
+            : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"%3E%3Crect fill="%23e5e7eb" width="300" height="200"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%239ca3af" font-size="14"%3EFile%3C/text%3E%3C/svg%3E',
           topic: selectedTopic.title,
           author: '선생님',
           link: upLink
@@ -699,12 +523,6 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
                             >
                                 <FileUp size={20} /> 자료 올리기
                             </button>
-                            <button 
-                                onClick={handleOpenCreator}
-                                className="bg-purple-600 text-white px-5 py-3 rounded-xl font-bold shadow-md hover:bg-purple-700 flex items-center gap-2 transition-all active:scale-95"
-                            >
-                                <Bot size={20} /> AI 자료 생성
-                            </button>
                         </div>
                     )}
                 </div>
@@ -854,183 +672,6 @@ export const OccasionApp: React.FC<OccasionAppProps> = ({ onBack, isTeacherMode 
           </div>
       )}
 
-      {/* NotebookLM Creator Modal */}
-      {showNotebookModal && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-                  <div className="bg-purple-700 p-6 text-white flex justify-between items-center shrink-0">
-                      <h2 className="text-2xl font-bold flex items-center gap-3">
-                          <Bot size={28} /> NotebookLM 자료 생성기
-                      </h2>
-                      <button onClick={() => setShowNotebookModal(false)} className="bg-white/20 p-2 rounded-full hover:bg-white/30"><X size={24}/></button>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-8 bg-gray-50">
-                      {/* Step 1: Guide */}
-                      {nbStep === 1 && (
-                          <div className="space-y-6 text-center py-10">
-                              <Bot size={80} className="mx-auto text-purple-300 mb-4" />
-                              <h3 className="text-2xl font-bold text-gray-800">구글 NotebookLM을 사용하여 자료를 만드세요</h3>
-                              <p className="text-gray-600 max-w-lg mx-auto leading-relaxed">
-                                  NotebookLM은 유튜브 영상이나 문서를 분석하여<br/>
-                                  자동으로 요약, 퀴즈, 학습 가이드를 만들어주는 구글의 AI 도구입니다.<br/>
-                                  교사 개인 계정으로 로그인하여 자료를 생성하고 여기에 붙여넣으세요.
-                              </p>
-                              
-                              <div className="flex flex-col gap-3 max-w-md mx-auto">
-                                  <a 
-                                    href="https://notebooklm.google.com/" target="_blank" rel="noopener noreferrer"
-                                    className="bg-white border-2 border-purple-200 text-purple-700 px-6 py-4 rounded-xl font-bold hover:bg-purple-50 flex items-center justify-center gap-2 shadow-sm"
-                                  >
-                                      1. NotebookLM 열기 <ExternalLink size={16}/>
-                                  </a>
-                                  <div className="text-gray-400 text-sm">↑ 새 창에서 열립니다</div>
-                              </div>
-
-                              <button onClick={() => setNbStep(2)} className="bg-purple-600 text-white px-10 py-4 rounded-xl font-bold text-xl hover:bg-purple-700 shadow-lg mt-8">
-                                  2. 자료 입력하기 (다음)
-                              </button>
-                          </div>
-                      )}
-
-                      {/* Step 2: Input Form */}
-                      {nbStep === 2 && (
-                          <div className="space-y-6 max-w-2xl mx-auto">
-                              <div>
-                                  <label className="block text-sm font-bold text-gray-700 mb-2">자료 제목</label>
-                                  <input type="text" value={nbTitle} onChange={e=>setNbTitle(e.target.value)} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-purple-500" />
-                              </div>
-                              <div>
-                                  <label className="block text-sm font-bold text-gray-700 mb-2">유튜브 영상 주소 (선택)</label>
-                                  <input type="text" value={nbUrl} onChange={e=>setNbUrl(e.target.value)} className="w-full border rounded-lg p-3 focus:ring-2 focus:ring-purple-500" placeholder="https://www.youtube.com/watch?v=..." />
-                              </div>
-                              <div>
-                                  <label className="block text-sm font-bold text-gray-700 mb-2">동영상 파일 첨부 (선택)</label>
-                                  <input
-                                    type="file"
-                                    accept="video/*"
-                                    onChange={(e) => handleVideoFileChange(e.currentTarget.files?.[0])}
-                                    className="w-full border rounded-lg p-3 bg-white focus:ring-2 focus:ring-purple-500"
-                                  />
-                                  {nbVideoFile && (
-                                      <p className="text-xs text-gray-500 mt-2">첨부됨: {nbVideoFile.name}</p>
-                                  )}
-                              </div>
-                              <div>
-                                  <label className="block text-sm font-bold text-gray-700 mb-2">핵심 요약 / 인포그래픽 내용</label>
-                                  <textarea value={nbSummary} onChange={e=>setNbSummary(e.target.value)} className="w-full border rounded-lg p-3 h-32 focus:ring-2 focus:ring-purple-500" placeholder="NotebookLM이 생성한 요약 내용을 여기에 붙여넣으세요." />
-                              </div>
-                              <div>
-                                  <label className="block text-sm font-bold text-gray-700 mb-2">인포그래픽 이미지 첨부 (선택)</label>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={(e) => handleInfographicChange(e.currentTarget.files?.[0])}
-                                    className="w-full border rounded-lg p-3 bg-white focus:ring-2 focus:ring-purple-500"
-                                  />
-                                  {nbInfographicImage && (
-                                      <p className="text-xs text-gray-500 mt-2">첨부됨: {nbInfographicImage.name}</p>
-                                  )}
-                              </div>
-                              
-                              <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
-                                  <div className="flex justify-between items-center mb-4">
-                                      <label className="text-lg font-bold text-purple-900">퀴즈 입력</label>
-                                      <div className="flex items-center gap-2">
-                                          <span className="text-sm text-gray-600">방식:</span>
-                                          <button
-                                            type="button"
-                                            onClick={() => { setQuizInputMode('manual'); setArtifactError(''); }}
-                                            className={`text-sm px-3 py-1.5 rounded-lg font-medium ${quizInputMode === 'manual' ? 'bg-purple-600 text-white' : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-100'}`}
-                                          >
-                                              직접 입력
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => { setQuizInputMode('artifact'); setArtifactError(''); }}
-                                            className={`text-sm px-3 py-1.5 rounded-lg font-medium ${quizInputMode === 'artifact' ? 'bg-purple-600 text-white' : 'bg-white border border-purple-200 text-purple-700 hover:bg-purple-100'}`}
-                                          >
-                                              아티팩트 링크
-                                          </button>
-                                          {quizInputMode === 'manual' && (
-                                              <button onClick={handleAddQuiz} className="text-sm bg-white border border-purple-200 px-3 py-1 rounded-lg text-purple-700 font-bold hover:bg-purple-100">+ 문제 추가</button>
-                                          )}
-                                      </div>
-                                  </div>
-
-                                  {quizInputMode === 'artifact' && (
-                                      <div className="mb-6 space-y-3 bg-white p-4 rounded-lg border border-purple-100">
-                                          <p className="text-sm text-gray-600">NotebookLM 아티팩트 링크 또는 퀴즈 JSON을 반환하는 URL을 입력하세요.</p>
-                                          <div className="flex gap-2">
-                                              <input
-                                                type="url"
-                                                value={artifactLinkUrl}
-                                                onChange={e => { setArtifactLinkUrl(e.target.value); setArtifactError(''); }}
-                                                placeholder="https://... (아티팩트 링크 또는 JSON URL)"
-                                                className="flex-1 border rounded-lg p-2 text-sm focus:ring-2 focus:ring-purple-500"
-                                              />
-                                              <button
-                                                type="button"
-                                                onClick={handleFetchFromArtifactLink}
-                                                disabled={artifactLoading}
-                                                className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 shrink-0"
-                                              >
-                                                  {artifactLoading ? '불러오는 중…' : '링크에서 불러오기'}
-                                              </button>
-                                          </div>
-                                          {artifactError && (
-                                              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">{artifactError}</p>
-                                          )}
-                                          <details className="text-sm">
-                                              <summary className="cursor-pointer text-purple-700 font-medium">JSON 직접 붙여넣기 (링크가 안 될 때)</summary>
-                                              <div className="mt-2 space-y-2">
-                                                  <textarea
-                                                    value={artifactJsonPaste}
-                                                    onChange={e => setArtifactJsonPaste(e.target.value)}
-                                                    placeholder='{"quizzes":[{"question":"문제 내용","options":["보기1","보기2","보기3","보기4"],"answer":0}]}'
-                                                    className="w-full border rounded-lg p-2 h-24 text-xs font-mono"
-                                                  />
-                                                  <button type="button" onClick={handleApplyArtifactJson} className="bg-purple-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-600">
-                                                      JSON 적용
-                                                  </button>
-                                              </div>
-                                          </details>
-                                      </div>
-                                  )}
-
-                                  <div className="space-y-6">
-                                      {nbQuizzes.map((q, idx) => (
-                                          <div key={idx} className="bg-white p-4 rounded-lg shadow-sm">
-                                              <div className="flex gap-2 mb-2">
-                                                  <span className="font-bold text-gray-500 pt-2">Q{idx+1}.</span>
-                                                  <input type="text" value={q.question} onChange={e=>updateQuiz(idx, 'question', e.target.value)} className="flex-1 border-b border-gray-200 p-2 focus:outline-none focus:border-purple-500" placeholder="문제 내용" />
-                                              </div>
-                                              <div className="grid grid-cols-2 gap-2 pl-8">
-                                                  {q.options.map((opt, oIdx) => (
-                                                      <div key={oIdx} className="flex items-center gap-2">
-                                                          <input 
-                                                            type="radio" name={`q-${idx}`} checked={q.answer === oIdx} 
-                                                            onChange={()=>updateQuiz(idx, 'answer', oIdx)}
-                                                            className="accent-purple-600"
-                                                          />
-                                                          <input type="text" value={opt} onChange={e=>updateQuiz(idx, 'option', e.target.value, oIdx)} className="flex-1 text-sm border rounded px-2 py-1" placeholder={`보기 ${oIdx+1}`} />
-                                                      </div>
-                                                  ))}
-                                              </div>
-                                          </div>
-                                      ))}
-                                  </div>
-                              </div>
-
-                              <button onClick={handleSaveNotebookMaterial} className="w-full bg-purple-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-purple-700 text-lg">
-                                  자료 저장 및 생성 완료
-                              </button>
-                          </div>
-                      )}
-                  </div>
-              </div>
-          </div>
-      )}
     </div>
   );
 };

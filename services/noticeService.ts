@@ -64,15 +64,26 @@ function isEmptyNoticeMap(d: NoticeDataMap): boolean {
   return Object.keys(d).length === 0;
 }
 
-/** Supabase + localStorage에서 해당 날짜 알림장 로드 (저장 기능 연동) */
+const SYNC_TIMEOUT_MS = 8000;
+
+/** Supabase + localStorage에서 해당 날짜 알림장 로드 (저장 기능 연동, 타임아웃 시 로컬만 사용) */
 export async function getNoticeAsync(date: string): Promise<Notice | null> {
-  const merged = await loadWithSupabaseFallback<NoticeDataMap>(
-    'notice_data',
-    getLocalNoticeMap,
-    saveLocalNoticeMap,
-    isEmptyNoticeMap
-  );
-  return merged[date] || null;
+  try {
+    const merged = await Promise.race([
+      loadWithSupabaseFallback<NoticeDataMap>(
+        'notice_data',
+        getLocalNoticeMap,
+        saveLocalNoticeMap,
+        isEmptyNoticeMap
+      ),
+      new Promise<NoticeDataMap>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), SYNC_TIMEOUT_MS)
+      ),
+    ]);
+    return merged[date] || null;
+  } catch {
+    return getNotice(date);
+  }
 }
 
 /** 동기 로드: localStorage만 (기존 호환) */
@@ -83,7 +94,7 @@ export const getNotice = (date: string): Notice | null => {
   return stored ? (JSON.parse(stored) as Notice) : null;
 };
 
-/** 알림장 저장 (Supabase + localStorage 이중 저장) */
+/** 알림장 저장 (로컬 즉시 저장 + Supabase 동기화 시도, Supabase 실패해도 로컬 저장 성공으로 처리) */
 export async function saveNoticeAsync(date: string, content: string): Promise<Notice> {
   const notice: Notice = {
     date,
@@ -93,15 +104,27 @@ export async function saveNoticeAsync(date: string, content: string): Promise<No
   const key = `${LS_KEY_PREFIX}${date}`;
   localStorage.setItem(key, JSON.stringify(notice));
 
-  const merged = await loadWithSupabaseFallback<NoticeDataMap>(
-    'notice_data',
-    getLocalNoticeMap,
-    saveLocalNoticeMap,
-    isEmptyNoticeMap
-  );
-  merged[date] = notice;
-  saveLocalNoticeMap(merged);
-  await saveClassColumn('notice_data', merged);
+  try {
+    const merged = await Promise.race([
+      loadWithSupabaseFallback<NoticeDataMap>(
+        'notice_data',
+        getLocalNoticeMap,
+        saveLocalNoticeMap,
+        isEmptyNoticeMap
+      ),
+      new Promise<NoticeDataMap>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), SYNC_TIMEOUT_MS)
+      ),
+    ]);
+    merged[date] = notice;
+    saveLocalNoticeMap(merged);
+    await Promise.race([
+      saveClassColumn('notice_data', merged),
+      new Promise<boolean>((r) => setTimeout(() => r(false), 6000)),
+    ]);
+  } catch {
+    // 로컬은 이미 저장됨. Supabase 동기화 실패해도 저장 성공으로 반환
+  }
   return notice;
 }
 
@@ -116,19 +139,31 @@ export const saveNotice = (date: string, content: string): Notice => {
   return notice;
 };
 
-/** 알림장 삭제 (Supabase + localStorage 반영) */
+/** 알림장 삭제 (로컬 즉시 반영 + Supabase 동기화 시도) */
 export async function deleteNoticeAsync(date: string): Promise<void> {
   localStorage.removeItem(`${LS_KEY_PREFIX}${date}`);
 
-  const merged = await loadWithSupabaseFallback<NoticeDataMap>(
-    'notice_data',
-    getLocalNoticeMap,
-    saveLocalNoticeMap,
-    isEmptyNoticeMap
-  );
-  delete merged[date];
-  saveLocalNoticeMap(merged);
-  await saveClassColumn('notice_data', merged);
+  try {
+    const merged = await Promise.race([
+      loadWithSupabaseFallback<NoticeDataMap>(
+        'notice_data',
+        getLocalNoticeMap,
+        saveLocalNoticeMap,
+        isEmptyNoticeMap
+      ),
+      new Promise<NoticeDataMap>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), SYNC_TIMEOUT_MS)
+      ),
+    ]);
+    delete merged[date];
+    saveLocalNoticeMap(merged);
+    await Promise.race([
+      saveClassColumn('notice_data', merged),
+      new Promise<boolean>((r) => setTimeout(() => r(false), 6000)),
+    ]);
+  } catch {
+    // 로컬 삭제는 이미 적용됨
+  }
 }
 
 /** 동기 삭제: localStorage만 (기존 호환) */

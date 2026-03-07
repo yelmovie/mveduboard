@@ -1,27 +1,81 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Home, Upload, Calendar, Check, FileText, AlertCircle, Trash2, Utensils, Download, Maximize2, X } from 'lucide-react';
 import * as lunchService from '../services/lunchService';
+import * as neisService from '../services/neisService';
+import type { NeisMealResult } from '../services/neisService';
+import { getTeacherProfileDetails } from '../src/lib/supabase/auth';
 import { LunchData } from '../types';
 
 interface LunchAppProps {
   onBack: () => void;
   isTeacherMode: boolean;
   embedded?: boolean;
+  /** 교사 프로필의 학교명(미전달 시 로그인 교사 정보로 자동 조회) */
+  schoolName?: string;
 }
 
-export const LunchApp: React.FC<LunchAppProps> = ({ onBack, isTeacherMode, embedded = false }) => {
+export const LunchApp: React.FC<LunchAppProps> = ({ onBack, isTeacherMode, embedded = false, schoolName: schoolNameProp }) => {
   const [lunchData, setLunchData] = useState<LunchData | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   
   // Teacher Mode State
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showUploadSuccess, setShowUploadSuccess] = useState(false); // Success feedback state
+  const [showUploadSuccess, setShowUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 오늘의 급식 (학교알리미/NEIS)
+  const [schoolName, setSchoolName] = useState(schoolNameProp ?? '');
+  const [todayMeal, setTodayMeal] = useState<NeisMealResult | null>(null);
+  const [todayMealLoading, setTodayMealLoading] = useState(false);
+  const [todayMealError, setTodayMealError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (schoolNameProp) {
+      setSchoolName(schoolNameProp);
+      return;
+    }
+    if (!isTeacherMode) return;
+    let cancelled = false;
+    getTeacherProfileDetails()
+      .then((details) => {
+        if (!cancelled && details?.schoolName) setSchoolName(details.schoolName);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isTeacherMode, schoolNameProp]);
+
+  useEffect(() => {
+    if (!schoolName.trim() || !neisService.isNeisConfigured()) {
+      setTodayMeal(null);
+      setTodayMealError(neisService.isNeisConfigured() ? null : null);
+      return;
+    }
+    let cancelled = false;
+    setTodayMealLoading(true);
+    setTodayMealError(null);
+    neisService
+      .getTodayMealBySchoolName(schoolName)
+      .then((result) => {
+        if (!cancelled) {
+          setTodayMeal(result ?? null);
+          setTodayMealError(result ? null : '오늘 급식 정보를 가져올 수 없습니다.');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTodayMeal(null);
+          setTodayMealError('급식 정보를 불러오는 중 오류가 발생했습니다.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTodayMealLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [schoolName]);
 
   const loadData = () => {
     const data = lunchService.getLunchData();
@@ -165,6 +219,42 @@ export const LunchApp: React.FC<LunchAppProps> = ({ onBack, isTeacherMode, embed
         )}
 
         <main className={`flex-1 p-6 md:p-10 max-w-6xl mx-auto w-full flex flex-col items-center ${embedded ? 'overflow-y-auto' : ''}`}>
+            {/* 오늘의 급식 (학교알리미/나이스) - 교사가 입력한 학교명 기준 */}
+            {schoolName.trim() && (
+                <div className="w-full max-w-4xl mb-6">
+                    <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
+                        <div className="flex items-center gap-2 text-orange-800 font-bold text-lg mb-3">
+                            <Utensils size={22} />
+                            <span>오늘의 급식</span>
+                            <span className="text-gray-500 font-normal text-sm">({schoolName})</span>
+                        </div>
+                        {todayMealLoading ? (
+                            <div className="flex items-center gap-3 py-4 text-gray-500">
+                                <div className="animate-spin rounded-full h-6 w-6 border-2 border-orange-400 border-t-transparent" />
+                                <span>급식 정보를 불러오는 중...</span>
+                            </div>
+                        ) : todayMealError && !todayMeal ? (
+                            <p className="text-gray-500 text-sm py-2">{todayMealError}</p>
+                        ) : todayMeal?.rawMenu ? (
+                            <div className="text-gray-800 whitespace-pre-line leading-relaxed">
+                                {todayMeal.rawMenu}
+                            </div>
+                        ) : todayMeal && todayMeal.items.length > 0 ? (
+                            <ul className="list-disc list-inside text-gray-800 space-y-1">
+                                {todayMeal.items.map((item, i) => (
+                                    <li key={i}>{item.dishName}{item.allergyInfo ? ` (${item.allergyInfo})` : ''}</li>
+                                ))}
+                            </ul>
+                        ) : null}
+                        {!neisService.isNeisConfigured() && schoolName.trim() && (
+                            <p className="text-gray-400 text-xs mt-2">
+                                나이스 교육정보 개방 포털 API 키 설정 시 오늘의 급식이 표시됩니다.
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {!lunchData ? (
                 <div className="text-center py-32 text-gray-400">
                     <Calendar size={80} className="mx-auto mb-6 opacity-30" />

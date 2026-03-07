@@ -377,7 +377,13 @@ export const listSubmissions = async (assignmentId: string) => {
     .select('*')
     .eq('assignment_id', assignmentId)
     .order('created_at', { ascending: false });
-  if (error) throw toOmrError('제출 현황을 불러올 수 없습니다.', error);
+  if (error) {
+    if (error.code === 'PGRST205' || (error.message && error.message.includes('schema cache'))) {
+      console.warn('[omr] omr_attempts 테이블이 없습니다. Supabase에 031_omr_attempts.sql 마이그레이션을 적용해주세요.');
+      return [];
+    }
+    throw toOmrError('제출 현황을 불러올 수 없습니다.', error);
+  }
   return (data || []) as OmrAttempt[];
 };
 
@@ -387,7 +393,13 @@ export const listSubmissionAnswers = async (assignmentId: string) => {
     .from(TABLES.submissionAnswers)
     .select('*')
     .eq('assignment_id', assignmentId);
-  if (error) throw toOmrError('문항 분석을 불러올 수 없습니다.', error);
+  if (error) {
+    if (error.code === 'PGRST205' || (error.message && error.message.includes('schema cache'))) {
+      console.warn('[omr] omr_submission_answers 테이블이 없습니다. Supabase 마이그레이션을 적용해주세요.');
+      return [];
+    }
+    throw toOmrError('문항 분석을 불러올 수 없습니다.', error);
+  }
   return data || [];
 };
 
@@ -397,10 +409,14 @@ export const listMySubmissions = async (assignmentIds: string[]) => {
   const { data: user } = await supabase.auth.getUser();
   const userId = user.user?.id;
   if (!userId) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from(TABLES.attempts)
     .select('*')
     .eq('user_id', userId)
     .in('assignment_id', assignmentIds);
+  if (error && (error.code === 'PGRST205' || (error.message && error.message.includes('schema cache')))) {
+    console.warn('[omr] omr_attempts 테이블이 없습니다.');
+    return [];
+  }
   return (data || []) as OmrAttempt[];
 };

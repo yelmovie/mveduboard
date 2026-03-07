@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Save, Home, Check, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, Home, Check, Trash2, Maximize2, Minimize2, Type, FileDown } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import * as noticeService from '../services/noticeService';
 
 const SECTION_DIVIDER = '\n\n---\n\n';
@@ -21,6 +22,8 @@ export const NoticeApp: React.FC<NoticeAppProps> = ({ onBack, isTeacherMode }) =
   const [section2, setSection2] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [font2x, setFont2x] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,44 +76,38 @@ export const NoticeApp: React.FC<NoticeAppProps> = ({ onBack, isTeacherMode }) =
     weekday: 'long',
   });
 
-  const textClass = 'bg-transparent border-none resize-none text-xl sm:text-2xl text-white placeholder-white/40 focus:ring-0 leading-loose tracking-wide font-hand w-full h-full';
+  const baseTextSize = font2x ? 'text-2xl sm:text-4xl' : 'text-xl sm:text-2xl';
+  const textClass = `bg-transparent border-none resize-none ${baseTextSize} text-white placeholder-white/40 focus:ring-0 leading-loose tracking-wide font-hand w-full h-full`;
   const textStyle = { textShadow: '1px 1px 2px rgba(0,0,0,0.5)', lineHeight: '1.8' };
   const emptyMsg = (
-    <div className="h-full flex items-center justify-center text-white/40 text-lg sm:text-xl">
+    <div className={`h-full flex items-center justify-center text-white/40 ${font2x ? 'text-xl sm:text-2xl' : 'text-lg sm:text-xl'}`}>
       오늘은 알림장이 없어요 😊
     </div>
   );
 
-  return (
-    <div className="min-h-screen bg-[#1e293b] flex flex-col items-center p-4 sm:p-6 font-hand overflow-auto">
-      {/* 헤더: 칠판 밖 — 제목·날짜·홈 */}
-      <div className="w-full max-w-7xl flex items-center justify-between gap-4 mb-4 text-[#f0fdf4]">
-        <button
-          onClick={onBack}
-          className="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 bg-red-500 rounded-full shadow-lg flex items-center justify-center border-4 border-red-700 hover:scale-105 transition-transform"
-          title="처음으로"
-        >
-          <Home className="text-white w-6 h-6 sm:w-8 sm:h-8" />
-        </button>
-        <div className="flex flex-col items-center gap-2 min-w-0 flex-1">
-          <h1 className="text-2xl sm:text-4xl font-bold tracking-widest border-b-2 border-white/40 pb-1">
-            알림장
-          </h1>
-          <div className="flex items-center gap-3 sm:gap-6 text-lg sm:text-2xl font-bold">
-            <button onClick={() => handleDateChange(-1)} className="p-1 hover:text-yellow-200 transition-colors">
-              <ChevronLeft size={28} className="sm:w-9 sm:h-9" />
-            </button>
-            <span className="min-w-[200px] sm:min-w-[280px] text-center truncate">{displayDate}</span>
-            <button onClick={() => handleDateChange(1)} className="p-1 hover:text-yellow-200 transition-colors">
-              <ChevronRight size={28} className="sm:w-9 sm:h-9" />
-            </button>
-          </div>
-        </div>
-        <div className="w-12 sm:w-14 flex-shrink-0" aria-hidden />
-      </div>
+  const handlePrintPdf = () => {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    doc.setFont('helvetica');
+    doc.setFontSize(14);
+    doc.text(`알림장 · ${displayDate}`, 14, 20);
+    doc.setFontSize(10);
+    let y = 32;
+    const line = (text: string) => {
+      const lines = doc.splitTextToSize(text, 180);
+      lines.forEach((line: string) => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        doc.text(line, 14, y);
+        y += 6;
+      });
+    };
+    if (section1.trim()) line(`[1단락]\n${section1}`);
+    if (section2.trim()) line(`\n[2단락]\n${section2}`);
+    if (!section1.trim() && !section2.trim()) doc.text('내용 없음', 14, y);
+    doc.save(`알림장_${currentDate}.pdf`);
+  };
 
-      {/* 칠판: 전체를 쓰는 2단락 영역 */}
-      <div className="relative w-full max-w-7xl flex-1 min-h-[50vh] sm:min-h-[60vh] bg-[#1a3c28] rounded-3xl border-[14px] sm:border-[16px] border-[#5d4037] shadow-2xl flex flex-col overflow-hidden">
+  const boardContent = (
+    <>
         <div className="absolute inset-0 pointer-events-none opacity-20 bg-[url('https://www.transparenttextures.com/patterns/black-scales.png')] mix-blend-overlay" />
         <div className="absolute inset-0 pointer-events-none opacity-10 bg-gradient-to-br from-white via-transparent to-transparent" />
 
@@ -127,7 +124,7 @@ export const NoticeApp: React.FC<NoticeAppProps> = ({ onBack, isTeacherMode }) =
                 style={textStyle}
               />
             ) : (
-              <div className="flex-1 p-4 text-white leading-loose font-hand whitespace-pre-wrap overflow-y-auto" style={{ lineHeight: '1.8' }}>
+              <div className={`flex-1 p-4 text-white leading-loose font-hand whitespace-pre-wrap overflow-y-auto ${baseTextSize}`} style={{ lineHeight: '1.8' }}>
                 {section1.trim() ? section1 : emptyMsg}
               </div>
             )}
@@ -143,31 +140,59 @@ export const NoticeApp: React.FC<NoticeAppProps> = ({ onBack, isTeacherMode }) =
                 style={textStyle}
               />
             ) : (
-              <div className="flex-1 p-4 text-white leading-loose font-hand whitespace-pre-wrap overflow-y-auto" style={{ lineHeight: '1.8' }}>
+              <div className={`flex-1 p-4 text-white leading-loose font-hand whitespace-pre-wrap overflow-y-auto ${baseTextSize}`} style={{ lineHeight: '1.8' }}>
                 {section2.trim() ? section2 : emptyMsg}
               </div>
             )}
           </div>
         </div>
 
-        {/* 하단 트레이: 저장·삭제 */}
-        <div className="relative z-20 flex-shrink-0 bg-[#5d4037] h-14 sm:h-20 flex items-center justify-center border-t-4 border-[#3e2723] gap-3 px-4">
+        {/* 하단 트레이: 저장·삭제·글씨2배·전체화면·PDF */}
+        <div className="relative z-20 flex-shrink-0 bg-[#5d4037] h-14 sm:h-20 flex items-center justify-center border-t-4 border-[#3e2723] gap-2 sm:gap-4 px-4 flex-wrap">
           <div className="absolute left-4 bottom-3 flex gap-2 pointer-events-none opacity-80">
             <div className="w-16 h-3 bg-white rounded-sm transform rotate-2" />
             <div className="w-10 h-3 bg-yellow-200 rounded-sm transform -rotate-1" />
             <div className="w-6 h-3 bg-red-300 rounded-sm transform rotate-6" />
           </div>
+          {!fullscreen && (
+            <>
+              <button
+                type="button"
+                onClick={() => setFont2x((v) => !v)}
+                className={`h-11 sm:h-12 px-3 sm:px-4 rounded-lg font-bold text-sm sm:text-base flex items-center gap-1.5 transition-all ${font2x ? 'bg-amber-600 text-white' : 'bg-white/90 text-stone-700 hover:bg-white'}`}
+                title="글씨 2배 확대"
+              >
+                <Type size={20} /> {font2x ? '2배' : '글씨'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFullscreen(true)}
+                className="h-11 sm:h-12 px-3 sm:px-4 rounded-lg bg-white/90 text-stone-700 hover:bg-white font-bold text-sm sm:text-base flex items-center gap-1.5"
+                title="칠판 전체화면"
+              >
+                <Maximize2 size={20} /> 전체화면
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintPdf}
+                className="h-11 sm:h-12 px-3 sm:px-4 rounded-lg bg-white/90 text-stone-700 hover:bg-white font-bold text-sm sm:text-base flex items-center gap-1.5"
+                title="PDF로 저장"
+              >
+                <FileDown size={20} /> PDF
+              </button>
+            </>
+          )}
           {isTeacherMode && (
-            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4">
+            <>
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className={`h-11 sm:h-12 px-6 rounded-lg shadow-lg font-bold text-lg flex items-center gap-2 transition-all ${
+                className={`h-11 sm:h-12 px-4 sm:px-6 rounded-lg shadow-lg font-bold text-lg flex items-center gap-2 transition-all ${
                   isSaved ? 'bg-green-600' : 'bg-blue-900 hover:bg-blue-800'
                 } text-white`}
               >
                 {isSaved ? <Check size={22} /> : <Save size={22} />}
-                {isSaving ? '저장 중...' : isSaved ? '저장 완료' : '저장하기'}
+                {isSaving ? '저장 중...' : isSaved ? '저장 완료' : '저장'}
               </button>
               <button
                 onClick={handleDelete}
@@ -175,11 +200,68 @@ export const NoticeApp: React.FC<NoticeAppProps> = ({ onBack, isTeacherMode }) =
               >
                 <Trash2 size={20} /> 삭제
               </button>
-            </div>
+            </>
           )}
           <div className="absolute right-4 bottom-3 w-20 h-3 bg-blue-200 rounded-sm transform -rotate-1 pointer-events-none opacity-80" />
         </div>
+      </>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#1e293b] flex flex-col items-center p-4 sm:p-6 font-hand overflow-auto">
+      {/* 전체화면 모드: 칠판만 */}
+      {fullscreen && (
+        <div className="fixed inset-0 z-50 bg-[#1e293b] flex flex-col items-center justify-center p-2 sm:p-4">
+          <button
+            type="button"
+            onClick={() => setFullscreen(false)}
+            className="absolute top-3 right-3 z-30 h-12 w-12 rounded-full bg-red-500 border-4 border-red-700 flex items-center justify-center hover:scale-105 transition-transform shadow-lg"
+            title="전체화면 나가기"
+          >
+            <Minimize2 className="text-white w-6 h-6" />
+          </button>
+          <div className="relative w-full max-w-7xl flex-1 min-h-[70vh] bg-[#1a3c28] rounded-3xl border-[14px] sm:border-[16px] border-[#5d4037] shadow-2xl flex flex-col overflow-hidden">
+            {boardContent}
+          </div>
+        </div>
+      )}
+
+      {!fullscreen && (
+        <>
+          {/* 헤더: 칠판 밖 — 제목·날짜·홈 */}
+          <div className="w-full max-w-7xl flex items-center justify-between gap-4 mb-4 text-[#f0fdf4]">
+            <button
+              onClick={onBack}
+              className="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 bg-red-500 rounded-full shadow-lg flex items-center justify-center border-4 border-red-700 hover:scale-105 transition-transform"
+              title="처음으로"
+            >
+              <Home className="text-white w-6 h-6 sm:w-8 sm:h-8" />
+            </button>
+            <div className="flex flex-col items-center gap-2 min-w-0 flex-1">
+              <h1 className="text-2xl sm:text-4xl font-bold tracking-widest border-b-2 border-white/40 pb-1">
+                알림장
+              </h1>
+              <div className="flex items-center gap-3 sm:gap-6 text-lg sm:text-2xl font-bold">
+                <button onClick={() => handleDateChange(-1)} className="p-1 hover:text-yellow-200 transition-colors">
+                  <ChevronLeft size={28} className="sm:w-9 sm:h-9" />
+                </button>
+                <span className="min-w-[200px] sm:min-w-[280px] text-center truncate">{displayDate}</span>
+                <button onClick={() => handleDateChange(1)} className="p-1 hover:text-yellow-200 transition-colors">
+                  <ChevronRight size={28} className="sm:w-9 sm:h-9" />
+                </button>
+              </div>
+            </div>
+            <div className="w-12 sm:w-14 flex-shrink-0" aria-hidden />
+          </div>
+        </>
+      )}
+
+      {/* 칠판: 일반 모드 */}
+      {!fullscreen && (
+      <div className="relative w-full max-w-7xl flex-1 min-h-[50vh] sm:min-h-[60vh] bg-[#1a3c28] rounded-3xl border-[14px] sm:border-[16px] border-[#5d4037] shadow-2xl flex flex-col overflow-hidden">
+        {boardContent}
       </div>
+      )}
     </div>
   );
 };

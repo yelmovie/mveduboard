@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Home, Users, Settings, Shuffle, Lock, Unlock, History, Save, UserCheck, Trash2, Download, RefreshCw, Loader2 } from 'lucide-react';
 import * as roleService from '../services/roleService';
 import * as studentService from '../services/studentService';
@@ -12,20 +12,72 @@ interface RoleAppProps {
 
 type Tab = 'board' | 'students' | 'roles' | 'history';
 
+const getFallbackData = (): RoleData => ({
+  students: [],
+  roles: roleService.getInitialRoles().map((title) => ({ id: `role-${title}`, title })),
+  currentAssignments: [],
+  history: [],
+});
+
+/** 로컬(localStorage + 명부 캐시)만으로 즉시 데이터 반환 - 첫 화면 빠르게 표시용 */
+const getInitialData = (): RoleData => {
+  try {
+    return roleService.getRoleData();
+  } catch {
+    return getFallbackData();
+  }
+};
+
 export const RoleApp: React.FC<RoleAppProps> = ({ onBack, isTeacherMode }) => {
-  const [data, setData] = useState<RoleData | null>(null);
+  const [data, setData] = useState<RoleData | null>(() => getInitialData());
   const [activeTab, setActiveTab] = useState<Tab>('board');
+  const [roleInput, setRoleInput] = useState(() => getInitialData().roles.map((r) => r.title).join('\n'));
   
-  // Edit States
-  const [roleInput, setRoleInput] = useState('');
   const [customRoleInputs, setCustomRoleInputs] = useState<Record<string, string>>({});
   const [isSyncing, setIsSyncing] = useState(false);
+  const emptyRetryDone = useRef(false);
 
   useEffect(() => {
     loadData();
   }, [isTeacherMode]);
 
-  const LOAD_TIMEOUT_MS = 8000;
+  // 안전장치: 10초 후에도 data가 null이면 fallback (현재는 초기값이 있으므로 거의 미사용)
+  useEffect(() => {
+    if (data !== null) return;
+    const t = setTimeout(() => {
+      const fallback = getFallbackData();
+      setData((prev) => {
+        if (prev !== null) return prev;
+        queueMicrotask(() => setRoleInput(fallback.roles.map((r) => r.title).join('\n')));
+        return fallback;
+      });
+    }, 10000);
+    return () => clearTimeout(t);
+  }, [data]);
+
+  // 교사 모드에서 학생이 0명일 때 한 번 더 명부 반영 시도
+  useEffect(() => {
+    if (!isTeacherMode || !data || data.students.length > 0 || emptyRetryDone.current) return;
+    emptyRetryDone.current = true;
+    const t = setTimeout(() => {
+      (async () => {
+        try {
+          await studentService.preloadClassId();
+          await studentService.fetchRosterFromDb();
+          const d = roleService.getRoleData();
+          if (d.students.length > 0) {
+            setData(d);
+            setRoleInput(d.roles.map((r) => r.title).join('\n'));
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
+    }, 600);
+    return () => clearTimeout(t);
+  }, [isTeacherMode, data]);
+
+  const LOAD_TIMEOUT_MS = 6000;
 
   const loadData = async () => {
     try {
@@ -54,12 +106,7 @@ export const RoleApp: React.FC<RoleAppProps> = ({ onBack, isTeacherMode }) => {
       setRoleInput(d.roles.map((r) => r.title).join('\n'));
     } catch (e) {
       console.error('[RoleApp] getRoleData error', e);
-      const fallback: RoleData = {
-        students: [],
-        roles: roleService.getInitialRoles().map((title) => ({ id: `role-${title}`, title })),
-        currentAssignments: [],
-        history: [],
-      };
+      const fallback = getFallbackData();
       setData(fallback);
       setRoleInput(fallback.roles.map((r) => r.title).join('\n'));
     }

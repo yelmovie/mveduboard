@@ -99,7 +99,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     { title: "학교 계획표", desc: "급식, 주간학습안내를 한눈에 확인해요 📅", icon: CalendarRange },
     { title: "우리학급게시판", desc: "친구들과 소통하고 멋진 작품을 공유해요 🎨", icon: Layout },
     { title: "학급운영도구", desc: "1인 1역, 포인트, 쿠폰으로 즐거운 우리 반 ✨", icon: Settings },
-    { title: "학습보조도구", desc: "타이머, 발표 뽑기, 빙고 게임으로 수업을 재미있게 🎲", icon: Briefcase },
+    { title: "학습보조도구", desc: "타이머, 발표뽑기, 자리뽑기, 빙고, 진로월드컵, 단어찾기로 수업을 재미있게 🎲", icon: Briefcase },
   ];
 
   useEffect(() => {
@@ -214,7 +214,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         category: 'TOOLS', 
         image: '/images/button5.png',
         overlay: 'bg-indigo-400', 
-        description: '타이머, 뽑기, 빙고, 단어찾기', 
+        description: '타이머, 발표뽑기, 자리뽑기, 빙고, 진로월드컵, 단어찾기', 
         tags: ['수업도구', '게임'] 
     },
     

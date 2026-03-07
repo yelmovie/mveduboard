@@ -121,6 +121,14 @@ export default function App() {
     }
   }, [currentApp, isTeacherLoggedIn]);
 
+  // 초기화면 제외 모든 게시판/앱은 로그인(교사 또는 학생) 후에만 접근
+  const isLoggedIn = isTeacherLoggedIn || !!student;
+  useEffect(() => {
+    if (currentApp !== null && currentApp !== "" && !isLoggedIn) {
+      setCurrentApp(null);
+    }
+  }, [currentApp, isLoggedIn]);
+
   // Supabase auth 상태와 UI 동기화 — 한번 로그인하면 네트워크/일시 오류로 로그아웃되지 않도록 재시도·명시적 SIGNED_OUT만 로그아웃
   useEffect(() => {
     if (!supabase) return;
@@ -267,6 +275,42 @@ export default function App() {
   }
 
   // --- App Switching ---
+  // 초기화면 제외 모든 게시판은 로그인(교사 또는 학생) 후에만 표시
+  if (currentApp !== null && currentApp !== "" && !isLoggedIn) {
+    return (
+      <>
+        <LandingPage
+          onSelectApp={handleSelectApp}
+          isLoggedIn={isTeacherLoggedIn}
+          onLogin={handleTeacherLoginClick}
+          onTeacherSignup={handleTeacherSignupClick}
+          onLogout={handleTeacherLogout}
+          onOpenDashboard={handleOpenDashboard}
+          student={student}
+          teacherName={teacherName}
+          onStudentLogin={() => setIsStudentLoginOpen(true)}
+          onStudentLogout={handleStudentLogout}
+        />
+        {isTeacherLoginOpen && (
+          <TeacherLoginModal
+            isSignup={isTeacherSignupMode}
+            onClose={() => setIsTeacherLoginOpen(false)}
+            onLoginSuccess={handleTeacherLoginSuccess}
+            onForgotPassword={() => { setIsTeacherLoginOpen(false); setIsResetPasswordRequestOpen(true); }}
+          />
+        )}
+        {isResetPasswordRequestOpen && (
+          <ResetPasswordRequestModal onClose={() => setIsResetPasswordRequestOpen(false)} />
+        )}
+        {isStudentLoginOpen && (
+          <StudentLoginModal
+            onClose={() => setIsStudentLoginOpen(false)}
+            onLoginSuccess={handleStudentLoginSuccess}
+          />
+        )}
+      </>
+    );
+  }
 
   // Handle Footer Pages
   if (
