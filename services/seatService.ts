@@ -11,8 +11,8 @@ const HISTORY_KEY = 'edu_seat_history';
 const initializeSeat = () => {
     if (!localStorage.getItem(INIT_KEY)) {
         const roster = studentService.getRoster();
-        const rows = 5;
-        const cols = 8; // Default increased to 40 seats
+        const rows = 6;
+        const cols = 9;
         const total = rows * cols;
         
         const seatMap = Array(total).fill(true);

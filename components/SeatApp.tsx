@@ -70,16 +70,36 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
       } catch {}
       try { await seatService.loadSeatDataAsync(); } catch {}
       const saved = seatService.getSeatLayout();
+      const ROWS_DEFAULT = 6;
+      const COLS_DEFAULT = 9;
       if (saved) {
-          setLayout(saved);
-          setRows(saved.rows);
-          setCols(saved.cols);
-          setTempSeatMap(saved.seatMap || Array(saved.rows * saved.cols).fill(true));
+          const isLegacy58 = saved.rows === 5 && saved.cols === 8;
+          if (isLegacy58) {
+              const newTotal = ROWS_DEFAULT * COLS_DEFAULT;
+              const newSeatMap = Array(newTotal).fill(true);
+              const newAssignments: (SeatStudent | null)[] = Array(newTotal).fill(null);
+              const oldMap = saved.seatMap || Array(40).fill(true);
+              const oldAssignments = saved.assignments || [];
+              for (let i = 0; i < 40 && i < oldMap.length; i++) {
+                newSeatMap[i] = oldMap[i];
+                if (i < oldAssignments.length && oldAssignments[i]) newAssignments[i] = oldAssignments[i];
+              }
+              const migrated = seatService.saveSeatLayout(ROWS_DEFAULT, COLS_DEFAULT, newAssignments, newSeatMap);
+              setLayout(migrated);
+              setRows(ROWS_DEFAULT);
+              setCols(COLS_DEFAULT);
+              setTempSeatMap(migrated.seatMap || Array(newTotal).fill(true));
+          } else {
+              setLayout(saved);
+              setRows(saved.rows);
+              setCols(saved.cols);
+              setTempSeatMap(saved.seatMap || Array(saved.rows * saved.cols).fill(true));
+          }
       } else {
-          setRows(6);
-          setCols(9);
-          setTempSeatMap(Array(6 * 9).fill(true));
-          setIsEditing(true); 
+          setRows(ROWS_DEFAULT);
+          setCols(COLS_DEFAULT);
+          setTempSeatMap(Array(ROWS_DEFAULT * COLS_DEFAULT).fill(true));
+          setIsEditing(true);
       }
     };
     init();
