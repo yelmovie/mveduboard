@@ -476,12 +476,11 @@ export const updatePassword = async (newPassword: string): Promise<void> => {
 export const studentJoinWithCode = async (joinCode: string, displayName: string) => {
   if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
   const normalized = joinCode.trim().toUpperCase();
-  const { data: klass, error: classError } = await supabase
-    .from('classes')
-    .select('id, school_id, join_code')
-    .eq('join_code', normalized)
-    .single();
-  if (classError || !klass) throw new Error('참여 코드가 올바르지 않습니다.');
+  const { data: payload, error: rpcError } = await supabase.rpc('get_class_and_roster_by_join_code', {
+    p_join_code: normalized,
+  });
+  if (rpcError || !payload?.id) throw new Error('참여 코드가 올바르지 않습니다.');
+  const klass = { id: payload.id, school_id: payload.school_id, join_code: payload.join_code };
 
   const { count } = await supabase
     .from('profiles')

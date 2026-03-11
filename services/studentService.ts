@@ -319,29 +319,21 @@ export const fetchRosterFromDb = async (): Promise<ClassStudent[]> => {
 };
 
 export const fetchRosterByJoinCode = async (joinCode: string): Promise<ClassStudent[]> => {
-  if (!supabase) return getRoster();
+  if (!supabase) throw new Error('참여 코드를 확인할 수 없습니다.');
   const normalizedCode = joinCode.trim().toUpperCase();
   if (!normalizedCode) return [];
-  const { data: klass, error: classError } = await supabase
-    .from('classes')
-    .select('id')
-    .eq('join_code', normalizedCode)
-    .maybeSingle();
-  if (classError) {
-    return getRoster();
-  }
-  if (!klass?.id) {
+  const { data: payload, error } = await supabase.rpc('get_class_and_roster_by_join_code', {
+    p_join_code: normalizedCode,
+  });
+  if (error) {
+    console.error('[studentService] fetchRosterByJoinCode RPC error', { code: error.code, message: error.message });
     throw new Error('참여 코드가 올바르지 않습니다.');
   }
-  const { data, error } = await supabase
-    .from('students')
-    .select('id, name, student_no, gender')
-    .eq('class_id', klass.id)
-    .order('student_no', { ascending: true });
-  if (error) {
-    throw new Error('학급 명부를 불러올 수 없습니다.');
+  if (!payload || !payload.id) {
+    throw new Error('참여 코드가 올바르지 않습니다.');
   }
-  const mapped: ClassStudent[] = (data || []).map((s, idx) => ({
+  const students = (payload.students as Array<{ id: string; name: string; student_no?: number; gender?: string }>) ?? [];
+  const mapped: ClassStudent[] = students.map((s, idx) => ({
     id: s.id,
     name: s.name,
     number: s.student_no ?? idx + 1,
