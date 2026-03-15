@@ -79,10 +79,40 @@
 
 ---
 
-## 5. 요약
+## 5. 학생 로그인(참여 코드) 오류 시
+
+"참여 코드가 올바르지 않습니다" 등으로 학생 입장이 안 될 때:
+
+1. **Supabase 대시보드에서 RPC·권한 확인**  
+   `supabase/sql/verify_student_join_code_rpc.sql` 파일 내용을 **Supabase 대시보드 → SQL Editor**에 붙여 넣고 **Run** 하세요.  
+   - `get_class_and_roster_by_join_code` 함수가 생성/갱신되고, **anon** 권한으로 호출 가능해집니다.  
+   - `classes.join_code`가 비어 있는 행이 있으면 고유 코드가 자동으로 채워집니다.
+
+2. **선생님 쪽 확인**  
+   - 선생님 대시보드에 표시되는 **학생 입장 코드**를 그대로 알려주었는지 확인합니다.  
+   - **학급 명부 관리**에서 명단을 저장한 뒤, 해당 학급의 입장 코드로 시도합니다.
+
+3. **앱 코드 쪽**  
+   - 참여 코드는 앞뒤 공백 제거 후 **대문자**로 비교합니다. 소문자로 입력해도 동작합니다.
+
+---
+
+## 6. Supabase MCP 사용 시 (Cursor)
+
+Supabase MCP로 DB를 조회·실행하려면 **project_id**가 필요합니다.
+
+- **project_id** = Supabase URL의 프로젝트 ref  
+  - 예: `VITE_SUPABASE_URL` 이 `https://abcdefgh.supabase.co` 이면 **project_id** 는 `abcdefgh`
+- Cursor에서 MCP 도구 호출 시 `project_id` 인자에 위 값을 넣어야 합니다.  
+  (프로젝트 ref는 Supabase 대시보드 URL에서도 확인할 수 있습니다.)
+
+---
+
+## 7. 요약
 
 - **필수**: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 - **AI 기능 사용 시**: `VITE_OPENAI_API_KEY`
 - **보안**: `.env.local` 미커밋, Supabase RLS 적용, 프로덕션에서는 OpenAI 호출을 백엔드로 이전 권장.
 - **기능·권한·보안 점검**: `docs/FEATURE_AUDIT.md` 참고.
 - **Vercel 배포**: 위 4절의 환경 변수와 Supabase URL 설정을 적용한 뒤 배포하면, 해당 도메인에서 로그인·정보 저장이 정상 동작합니다.
+- **학생 로그인 오류**: 5절대로 `verify_student_join_code_rpc.sql` 실행 후 재시도.

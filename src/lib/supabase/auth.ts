@@ -476,10 +476,17 @@ export const updatePassword = async (newPassword: string): Promise<void> => {
 export const studentJoinWithCode = async (joinCode: string, displayName: string) => {
   if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
   const normalized = joinCode.trim().toUpperCase();
+  if (!normalized) throw new Error('참여 코드를 입력해주세요.');
   const { data: payload, error: rpcError } = await supabase.rpc('get_class_and_roster_by_join_code', {
     p_join_code: normalized,
   });
-  if (rpcError || !payload?.id) throw new Error('참여 코드가 올바르지 않습니다.');
+  if (rpcError) {
+    if (isAuthDebug()) console.error('[studentJoinWithCode] RPC error', rpcError.code, rpcError.message);
+    throw new Error('참여 코드를 확인할 수 없습니다. 잠시 후 다시 시도해주세요.');
+  }
+  if (!payload?.id) {
+    throw new Error('참여 코드가 올바르지 않습니다. 선생님이 알려주신 코드를 확인해주세요.');
+  }
   const klass = { id: payload.id, school_id: payload.school_id, join_code: payload.join_code };
 
   const { count } = await supabase

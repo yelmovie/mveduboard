@@ -267,10 +267,22 @@ export const updateBoardSettings = async (board: Board, boardId: string = 'board
   return board;
 };
 
-export const joinBoard = async (code: string, nickname: string): Promise<Participant | null> => {
-  // Join code verification is skipped/simplified for new boards to allow easy demo
-  // In real app, each board would have specific code or centralized class code
-  if (code !== '123456') {
+export interface JoinBoardOptions {
+  /** 학생 로그인 fallback: 이미 fetchRosterByJoinCode로 코드 검증된 경우 코드 재검사 생략 */
+  skipCodeCheck?: boolean;
+}
+
+export const joinBoard = async (
+  code: string,
+  nickname: string,
+  options?: JoinBoardOptions
+): Promise<Participant | null> => {
+  const normalizedCode = code.trim().toUpperCase();
+  if (!normalizedCode) {
+    throw new Error('참여 코드를 입력해주세요.');
+  }
+  // 학생 로그인에서 이미 참여 코드로 명부 조회에 성공한 뒤 Supabase 가입 실패 시 fallback으로 호출되는 경우 검증 생략
+  if (!options?.skipCodeCheck && normalizedCode !== '123456') {
     throw new Error('참여 코드가 올바르지 않습니다.');
   }
 

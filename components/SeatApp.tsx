@@ -236,20 +236,23 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
 
   const handleSeatDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
   };
 
   const handleSeatDrop = (e: React.DragEvent, targetIdx: number) => {
     e.preventDefault();
+    e.stopPropagation();
     if (dragSourceIndex === null || !layout || isShuffling) return;
-    const seatMap = layout.seatMap || Array(layout.rows * layout.cols).fill(true);
-    if (!seatMap[targetIdx]) return;
-    const newAssignments = [...layout.assignments];
-    const src = newAssignments[dragSourceIndex];
-    const tgt = newAssignments[targetIdx];
-    newAssignments[dragSourceIndex] = tgt;
-    newAssignments[targetIdx] = src;
-    const newLayout = seatService.saveSeatLayout(layout.rows, layout.cols, newAssignments, seatMap);
+    const totalSlots = layout.rows * layout.cols;
+    const seatMap = layout.seatMap || Array(totalSlots).fill(true);
+    if (targetIdx < 0 || targetIdx >= totalSlots || !seatMap[targetIdx]) return;
+    const current = Array.from({ length: totalSlots }, (_, i) => layout.assignments[i] ?? null);
+    const src = current[dragSourceIndex];
+    const tgt = current[targetIdx];
+    current[dragSourceIndex] = tgt;
+    current[targetIdx] = src;
+    const newLayout = seatService.saveSeatLayout(layout.rows, layout.cols, current, seatMap);
     setLayout(newLayout);
     setDragSourceIndex(null);
   };
@@ -385,8 +388,12 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
                                 gridTemplateColumns: `repeat(${layout.cols}, minmax(0, 1fr))` 
                             }}
                          >
-                            {(isShuffling ? shuffleDisplay : layout.assignments).map((seatStudent, idx) => {
-                                 const isSeat = layout.seatMap ? layout.seatMap[idx] : true;
+                            {Array.from({ length: layout.rows * layout.cols }, (_, idx) => {
+                                 const seatMap = layout.seatMap || Array(layout.rows * layout.cols).fill(true);
+                                 const isSeat = seatMap[idx] !== false;
+                                 const seatStudent = isShuffling
+                                   ? shuffleDisplay[idx] ?? null
+                                   : (layout.assignments[idx] ?? null);
                                  const isCurrentSeat =
                                    !isTeacherMode &&
                                    !!currentStudentName &&
@@ -408,16 +415,18 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
                                         draggable={isDraggable}
                                         onDragStart={isDraggable ? (e) => handleSeatDragStart(e, idx) : undefined}
                                         onDragOver={isTeacherMode && !isShuffling ? handleSeatDragOver : undefined}
+                                        onDragEnter={isTeacherMode && !isShuffling ? handleSeatDragOver : undefined}
                                         onDrop={isTeacherMode && !isShuffling ? (e) => handleSeatDrop(e, idx) : undefined}
                                         onDragEnd={handleSeatDragEnd}
                                         className={`
                                             aspect-[4/3] rounded-xl flex flex-col items-center justify-center p-2 shadow-sm border-b-4 transition-all duration-300
-                                        ${seatStudent ? 'bg-white border-amber-200' : 'bg-white/50 border-gray-200 border-dashed'}
+                                        ${seatStudent ? 'bg-white border-amber-200' : 'bg-amber-50/80 border-amber-100 border-dashed'}
                                         ${isCurrentSeat ? 'ring-4 ring-sky-300 bg-sky-100 border-sky-400 shadow-md' : ''}
                                         ${isJustRevealed ? 'scale-110 ring-4 ring-amber-400 shadow-lg bg-amber-50 border-amber-400' : ''}
                                         ${isShuffling && !isRevealed && seatStudent ? 'bg-amber-100/80' : ''}
                                         ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}
                                         ${isDragging ? 'opacity-50 scale-95' : ''}
+                                        ${!seatStudent && isTeacherMode && !isShuffling ? 'min-h-[80px]' : ''}
                                         `}
                                         style={isJustRevealed ? { animation: 'seat-pop 0.4s ease-out' } : undefined}
                                      >
@@ -435,7 +444,7 @@ export const SeatApp: React.FC<SeatAppProps> = ({ onBack, isTeacherMode, student
                                             <div className="text-2xl animate-pulse">❓</div>
                                           )
                                          ) : (
-                                             <span className="text-gray-300 text-xs">빈 자리</span>
+                                             <span className="text-gray-400 text-xs select-none">드래그하여 배치</span>
                                          )}
                                      </div>
                                  );

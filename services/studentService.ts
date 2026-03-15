@@ -326,11 +326,11 @@ export const fetchRosterByJoinCode = async (joinCode: string): Promise<ClassStud
     p_join_code: normalizedCode,
   });
   if (error) {
-    console.error('[studentService] fetchRosterByJoinCode RPC error', { code: error.code, message: error.message });
-    throw new Error('참여 코드가 올바르지 않습니다.');
+    console.error('[studentService] fetchRosterByJoinCode RPC error', { code: error.code, message: error.message, hint: error.hint });
+    throw new Error('참여 코드를 확인할 수 없습니다. 코드를 다시 입력하거나 잠시 후 시도해주세요.');
   }
   if (!payload || !payload.id) {
-    throw new Error('참여 코드가 올바르지 않습니다.');
+    throw new Error('참여 코드가 올바르지 않습니다. 선생님이 알려주신 6자리 코드를 확인해주세요.');
   }
   const students = (payload.students as Array<{ id: string; name: string; student_no?: number; gender?: string }>) ?? [];
   const mapped: ClassStudent[] = students.map((s, idx) => ({

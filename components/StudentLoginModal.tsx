@@ -22,11 +22,16 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
     setError('');
     try {
       const inputName = studentName.trim();
+      const code = joinCode.trim().toUpperCase();
+      if (!code) {
+        setError('참여 코드를 입력해주세요.');
+        return;
+      }
       if (!inputName) {
         setError('학급 명부에 등록된 이름을 입력해주세요.');
         return;
       }
-      const roster = await studentService.fetchRosterByJoinCode(joinCode);
+      const roster = await studentService.fetchRosterByJoinCode(code);
       if (roster.length === 0) {
         setError('학급 명부가 등록되지 않았습니다. 선생님께 문의해주세요.');
         return;
@@ -39,7 +44,7 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
       }
       const displayName = matched.name;
       try {
-        const joinResult = await studentJoinWithCode(joinCode, displayName);
+        const joinResult = await studentJoinWithCode(code, displayName);
         const newParticipant: Participant = {
           id: joinResult.userId,
           nickname: displayName,
@@ -52,7 +57,8 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
         return;
       } catch (supabaseError: any) {
         try {
-          const p = await api.joinBoard(joinCode, displayName);
+          // 이미 참여 코드·명부 검증 완료된 상태에서 Supabase 가입만 실패한 경우 로컬 세션으로 입장 허용
+          const p = await api.joinBoard(code, displayName, { skipCodeCheck: true });
           if (p) {
             await logBetaEvent('join_success');
             onLoginSuccess(p);
