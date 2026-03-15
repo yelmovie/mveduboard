@@ -1,7 +1,12 @@
-
 import { ClassStudent } from '../types';
 import { generateUUID } from '../src/utils/uuid';
 import { supabase } from '../src/lib/supabase/client';
+import { normalizeJoinCode, maskJoinCodeForLog } from '../src/lib/normalizeJoinCode';
+import {
+  StudentJoinFailureReason,
+  getStudentJoinFailureMessage,
+  type StudentJoinFailureReasonType,
+} from '../src/lib/studentJoinFailureReasons';
 
 const LS_KEY = 'edu_class_roster';
 const MAX_STUDENTS = 30;
@@ -318,20 +323,59 @@ export const fetchRosterFromDb = async (): Promise<ClassStudent[]> => {
   return getRoster();
 };
 
+const JOIN_CODE_QUERY_TARGET = 'public.classes.join_code via RPC get_class_and_roster_by_join_code';
+
 export const fetchRosterByJoinCode = async (joinCode: string): Promise<ClassStudent[]> => {
-  if (!supabase) throw new Error('참여 코드를 확인할 수 없습니다.');
-  const normalizedCode = joinCode.trim().toUpperCase();
+  if (!supabase) throw new Error(getStudentJoinFailureMessage(StudentJoinFailureReason.SERVER_ERROR));
+  const normalizedCode = normalizeJoinCode(joinCode);
   if (!normalizedCode) return [];
+
+  if (import.meta.env.DEV) {
+    console.log('[fetchRosterByJoinCode]', {
+      inputLength: joinCode.length,
+      normalizedLength: normalizedCode.length,
+      codeMasked: maskJoinCodeForLog(normalizedCode),
+      queryTarget: JOIN_CODE_QUERY_TARGET,
+    });
+  }
+
   const { data: payload, error } = await supabase.rpc('get_class_and_roster_by_join_code', {
     p_join_code: normalizedCode,
   });
+
   if (error) {
-    console.error('[studentService] fetchRosterByJoinCode RPC error', { code: error.code, message: error.message, hint: error.hint });
-    throw new Error('참여 코드를 확인할 수 없습니다. 코드를 다시 입력하거나 잠시 후 시도해주세요.');
+    const reason: StudentJoinFailureReasonType = StudentJoinFailureReason.RPC_ERROR;
+    if (import.meta.env.DEV) {
+      console.warn('[fetchRosterByJoinCode] failure', {
+        reason,
+        rpcCode: error.code,
+        rpcMessage: error.message,
+        codeMasked: maskJoinCodeForLog(normalizedCode),
+      });
+    }
+    throw new Error(getStudentJoinFailureMessage(reason));
   }
+
   if (!payload || !payload.id) {
-    throw new Error('참여 코드가 올바르지 않습니다. 선생님이 알려주신 6자리 코드를 확인해주세요.');
+    const reason: StudentJoinFailureReasonType = StudentJoinFailureReason.CODE_NOT_FOUND;
+    if (import.meta.env.DEV) {
+      console.warn('[fetchRosterByJoinCode] failure', {
+        reason,
+        rowFound: false,
+        queryTarget: JOIN_CODE_QUERY_TARGET,
+        codeMasked: maskJoinCodeForLog(normalizedCode),
+      });
+    }
+    throw new Error(getStudentJoinFailureMessage(reason));
   }
+
+  if (import.meta.env.DEV) {
+    console.log('[fetchRosterByJoinCode] success', {
+      classIdPrefix: payload.id ? `${String(payload.id).slice(0, 8)}...` : null,
+      studentCount: Array.isArray(payload.students) ? payload.students.length : 0,
+    });
+  }
+
   const students = (payload.students as Array<{ id: string; name: string; student_no?: number; gender?: string }>) ?? [];
   const mapped: ClassStudent[] = students.map((s, idx) => ({
     id: s.id,

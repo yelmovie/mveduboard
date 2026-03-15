@@ -15,6 +15,7 @@ import { SentenceRefinerModal } from './SentenceRefinerModal';
 import { StudentReportModal } from './StudentReportModal';
 import { getCurrentUserProfile, getClassById, getSession, regenerateJoinCodeByClassId, getTeacherProfileDetails, updateTeacherProfile } from '../src/lib/supabase/auth';
 import { getErrorMessage } from '../src/utils/errors';
+import { normalizeJoinCode, maskJoinCodeForLog } from '../src/lib/normalizeJoinCode';
 
 interface TeacherDashboardProps {
   onSelectApp: (appId: string) => void;
@@ -60,11 +61,20 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
       if (profile?.class_id) {
         setClassId(profile.class_id);
         const klass = await getClassById(profile.class_id);
-        setJoinCode(klass?.join_code || null);
-        if (klass?.join_code) {
-          localStorage.setItem('edu_join_code', klass.join_code);
+        const rawCode = klass?.join_code ?? '';
+        const displayCode = normalizeJoinCode(rawCode) || null;
+        setJoinCode(displayCode);
+        if (displayCode) {
+          localStorage.setItem('edu_join_code', displayCode);
         } else {
           localStorage.removeItem('edu_join_code');
+        }
+        if (import.meta.env.DEV && rawCode) {
+          console.log('[TeacherDashboard] loadJoinCode', {
+            codeMasked: maskJoinCodeForLog(rawCode),
+            source: 'public.classes.join_code',
+            classIdPrefix: profile.class_id ? `${String(profile.class_id).slice(0, 8)}...` : null,
+          });
         }
       } else {
         setClassId(null);
@@ -292,10 +302,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onSelectApp,
                   return;
                 }
                 setClassId(effectiveClassId);
-                setJoinCode(updated?.join_code || null);
-                if (updated?.join_code) {
-                  localStorage.setItem('edu_join_code', updated.join_code);
-                }
+                const newCode = normalizeJoinCode(updated?.join_code ?? '') || null;
+                setJoinCode(newCode);
+                if (newCode) localStorage.setItem('edu_join_code', newCode);
+                else localStorage.removeItem('edu_join_code');
                 alert('새 입장 코드로 변경되었습니다.');
               } catch (err) {
                 alert(getErrorMessage(err, '입장 코드 변경에 실패했습니다.'));

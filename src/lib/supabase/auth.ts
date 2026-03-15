@@ -3,6 +3,12 @@ import { SUPABASE_URL, isAuthDebug } from '../../config/supabase';
 import { MAX_STUDENTS_PER_CLASS } from '../../constants/limits';
 import { getErrorMessage } from '../../utils/errors';
 import { generateUUID } from '../../utils/uuid';
+import { normalizeJoinCode, maskJoinCodeForLog } from '../normalizeJoinCode';
+import {
+  StudentJoinFailureReason,
+  getStudentJoinFailureMessage,
+  type StudentJoinFailureReasonType,
+} from '../studentJoinFailureReasons';
 
 /** getSession/getUser가 실패할 때(다른 포트·도메인) localStorage에서 Supabase 세션 직접 읽기. client와 동일한 storageKey 사용 */
 const getUserIdFromStorage = (): string | null => {
@@ -473,19 +479,48 @@ export const updatePassword = async (newPassword: string): Promise<void> => {
   if (error) throw new Error(error.message);
 };
 
+const JOIN_CODE_QUERY_TARGET = 'public.classes.join_code via RPC get_class_and_roster_by_join_code';
+
 export const studentJoinWithCode = async (joinCode: string, displayName: string) => {
-  if (!supabase) throw new Error('Supabase 환경변수가 필요합니다.');
-  const normalized = joinCode.trim().toUpperCase();
-  if (!normalized) throw new Error('참여 코드를 입력해주세요.');
+  if (!supabase) throw new Error(getStudentJoinFailureMessage(StudentJoinFailureReason.SERVER_ERROR));
+  const normalized = normalizeJoinCode(joinCode);
+  if (!normalized) throw new Error(getStudentJoinFailureMessage(StudentJoinFailureReason.CODE_EMPTY));
+
+  if (isAuthDebug()) {
+    console.log('[studentJoinWithCode]', {
+      normalizedLength: normalized.length,
+      codeMasked: maskJoinCodeForLog(normalized),
+      queryTarget: JOIN_CODE_QUERY_TARGET,
+    });
+  }
+
   const { data: payload, error: rpcError } = await supabase.rpc('get_class_and_roster_by_join_code', {
     p_join_code: normalized,
   });
+
   if (rpcError) {
-    if (isAuthDebug()) console.error('[studentJoinWithCode] RPC error', rpcError.code, rpcError.message);
-    throw new Error('참여 코드를 확인할 수 없습니다. 잠시 후 다시 시도해주세요.');
+    const reason: StudentJoinFailureReasonType = StudentJoinFailureReason.RPC_ERROR;
+    if (isAuthDebug()) {
+      console.warn('[studentJoinWithCode] failure', {
+        reason,
+        rpcCode: rpcError.code,
+        rpcMessage: rpcError.message,
+        codeMasked: maskJoinCodeForLog(normalized),
+      });
+    }
+    throw new Error(getStudentJoinFailureMessage(reason));
   }
   if (!payload?.id) {
-    throw new Error('참여 코드가 올바르지 않습니다. 선생님이 알려주신 코드를 확인해주세요.');
+    const reason: StudentJoinFailureReasonType = StudentJoinFailureReason.CODE_NOT_FOUND;
+    if (isAuthDebug()) {
+      console.warn('[studentJoinWithCode] failure', {
+        reason,
+        rowFound: false,
+        queryTarget: JOIN_CODE_QUERY_TARGET,
+        codeMasked: maskJoinCodeForLog(normalized),
+      });
+    }
+    throw new Error(getStudentJoinFailureMessage(reason));
   }
   const klass = { id: payload.id, school_id: payload.school_id, join_code: payload.join_code };
 
@@ -495,7 +530,7 @@ export const studentJoinWithCode = async (joinCode: string, displayName: string)
     .eq('class_id', klass.id);
 
   if ((count ?? 0) >= MAX_STUDENTS_PER_CLASS) {
-    throw new Error('현재 학급 인원이 가득 찼습니다.');
+    throw new Error(getStudentJoinFailureMessage(StudentJoinFailureReason.CLASS_FULL));
   }
 
   const email = `student+${randomString(10)}@example.local`;

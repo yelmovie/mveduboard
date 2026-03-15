@@ -6,6 +6,11 @@ import { Participant } from '../types';
 import { studentJoinWithCode } from '../src/lib/supabase/auth';
 import { logBetaEvent } from '../src/lib/supabase/events';
 import { generateUUID } from '../src/utils/uuid';
+import { normalizeJoinCode, maskJoinCodeForLog } from '../src/lib/normalizeJoinCode';
+import {
+  getStudentJoinFailureMessage,
+  StudentJoinFailureReason,
+} from '../src/lib/studentJoinFailureReasons';
 
 interface StudentLoginModalProps {
   onClose: () => void;
@@ -20,17 +25,28 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    const inputName = studentName.trim();
+    const code = normalizeJoinCode(joinCode);
+
+    if (!code) {
+      setError(getStudentJoinFailureMessage(StudentJoinFailureReason.CODE_EMPTY));
+      return;
+    }
+    if (!inputName) {
+      setError('학급 명부에 등록된 이름을 입력해주세요.');
+      return;
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('[StudentLoginModal] submit', {
+        inputCodeLength: joinCode.length,
+        trimmedUppercased: code.length,
+        codeMasked: maskJoinCodeForLog(code),
+        queryTarget: 'public.classes.join_code via RPC get_class_and_roster_by_join_code',
+      });
+    }
+
     try {
-      const inputName = studentName.trim();
-      const code = joinCode.trim().toUpperCase();
-      if (!code) {
-        setError('참여 코드를 입력해주세요.');
-        return;
-      }
-      if (!inputName) {
-        setError('학급 명부에 등록된 이름을 입력해주세요.');
-        return;
-      }
       const roster = await studentService.fetchRosterByJoinCode(code);
       if (roster.length === 0) {
         setError('학급 명부가 등록되지 않았습니다. 선생님께 문의해주세요.');
@@ -39,7 +55,14 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
       const normalize = (value: string) => value.replace(/\s+/g, '');
       const matched = roster.find((s) => normalize(s.name) === normalize(inputName));
       if (!matched) {
-        setError('학급 명부에 없는 이름입니다. 정확한 이름을 입력해주세요.');
+        if (import.meta.env.DEV) {
+          console.warn('[StudentLoginModal] failure', {
+            reason: 'STUDENT_NAME_NOT_FOUND',
+            codeFound: true,
+            rosterLength: roster.length,
+          });
+        }
+        setError(getStudentJoinFailureMessage(StudentJoinFailureReason.STUDENT_NAME_NOT_FOUND));
         return;
       }
       const displayName = matched.name;
