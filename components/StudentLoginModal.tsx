@@ -11,6 +11,17 @@ import {
   getStudentJoinFailureMessage,
   StudentJoinFailureReason,
 } from '../src/lib/studentJoinFailureReasons';
+import { normalizeStudentNameForCompare } from '../src/lib/normalizeJoinCode';
+import {
+  isDebugJoin,
+  logJoinDebug,
+  setLastJoinDebugLog,
+  getBuildInfo,
+  getSupabaseHostPrefix,
+  getAnonKeySafeHint,
+  type JoinDebugLog,
+} from '../src/lib/debugJoin';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../src/config/supabase';
 
 interface StudentLoginModalProps {
   onClose: () => void;
@@ -21,6 +32,8 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
   const [joinCode, setJoinCode] = useState('');
   const [studentName, setStudentName] = useState('');
   const [error, setError] = useState('');
+  const [debugLog, setDebugLog] = useState<JoinDebugLog | null>(null);
+  const [debugToolResult, setDebugToolResult] = useState<string>('');
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,24 +50,57 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
       return;
     }
 
+    const targetRpc = 'get_class_and_roster_by_join_code';
+    const nameMask = (s: string) => (s.length <= 1 ? '*' : s[0] + '*'.repeat(Math.min(s.length - 1, 2)));
+
     if (import.meta.env.DEV) {
       console.log('[StudentLoginModal] submit', {
         inputCodeLength: joinCode.length,
         trimmedUppercased: code.length,
         codeMasked: maskJoinCodeForLog(code),
-        queryTarget: 'public.classes.join_code via RPC get_class_and_roster_by_join_code',
+        queryTarget: 'public.classes.join_code via RPC ' + targetRpc,
       });
     }
 
     try {
       const roster = await studentService.fetchRosterByJoinCode(code);
+      const resultExists = true;
+      const rpcStudentCount = roster.length;
+
       if (roster.length === 0) {
-        setError('학급 명부가 등록되지 않았습니다. 선생님께 문의해주세요.');
+        const log: JoinDebugLog = {
+          rawCodeLength: joinCode.length,
+          normalizedCodeMasked: maskJoinCodeForLog(code),
+          rawNameLength: studentName.length,
+          normalizedNameMasked: nameMask(inputName),
+          targetRpc,
+          resultExists,
+          matchedStudentExists: false,
+          failureReason: StudentJoinFailureReason.ROSTER_EMPTY,
+          rpcStudentCount: 0,
+        };
+        setLastJoinDebugLog(log);
+        setDebugLog(log);
+        logJoinDebug('submit', log);
+        setError(getStudentJoinFailureMessage(StudentJoinFailureReason.ROSTER_EMPTY));
         return;
       }
-      const normalize = (value: string) => value.replace(/\s+/g, '');
-      const matched = roster.find((s) => normalize(s.name) === normalize(inputName));
+      const matched = roster.find((s) => normalizeStudentNameForCompare(s.name) === normalizeStudentNameForCompare(inputName));
       if (!matched) {
+        const log: JoinDebugLog = {
+          rawCodeLength: joinCode.length,
+          normalizedCodeMasked: maskJoinCodeForLog(code),
+          rawNameLength: studentName.length,
+          normalizedNameMasked: nameMask(inputName),
+          targetRpc,
+          resultExists,
+          matchedStudentExists: false,
+          failureReason: StudentJoinFailureReason.STUDENT_NAME_NOT_FOUND,
+          rpcStudentCount: roster.length,
+        };
+        setLastJoinDebugLog(log);
+        setDebugLog(log);
+        logJoinDebug('submit', log);
         if (import.meta.env.DEV) {
           console.warn('[StudentLoginModal] failure', {
             reason: 'STUDENT_NAME_NOT_FOUND',
@@ -102,6 +148,24 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
         }
       }
     } catch (err: any) {
+      const reason = err?.message?.includes('참여 코드를 찾을 수 없습니다')
+        ? StudentJoinFailureReason.CODE_NOT_FOUND
+        : err?.message?.includes('확인할 수 없습니다')
+          ? StudentJoinFailureReason.RPC_ERROR
+          : StudentJoinFailureReason.UNKNOWN;
+      const log: JoinDebugLog = {
+        rawCodeLength: joinCode.length,
+        normalizedCodeMasked: maskJoinCodeForLog(code),
+        rawNameLength: studentName.length,
+        normalizedNameMasked: nameMask(inputName),
+        targetRpc,
+        resultExists: false,
+        matchedStudentExists: false,
+        failureReason: reason,
+      };
+      setLastJoinDebugLog(log);
+      setDebugLog(log);
+      logJoinDebug('submit', log);
       setError(err.message || '참여 실패');
     }
   };
@@ -150,6 +214,62 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
           <button type="submit" className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-md active:scale-95">
             입장하기 🚀
           </button>
+
+          {isDebugJoin() && (
+            <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-left text-sm space-y-3">
+              <p className="font-bold text-amber-800">[배포 검증] ?debugJoin=1</p>
+              <div className="space-y-1 font-mono text-xs">
+                <p>build: {getBuildInfo().gitSha || 'not-injected'} | prod: {String(getBuildInfo().isProd)}</p>
+                <p>env host: {getSupabaseHostPrefix(SUPABASE_URL)}</p>
+                <p>anon key: {getAnonKeySafeHint(SUPABASE_ANON_KEY)}</p>
+                {debugLog && (
+                  <>
+                    <p>normalized code: {debugLog.normalizedCodeMasked} | rpc: {debugLog.targetRpc}</p>
+                    <p>resultExists: {String(debugLog.resultExists)} | matchedName: {String(debugLog.matchedStudentExists)} | reason: {debugLog.failureReason}</p>
+                    {debugLog.rpcStudentCount != null && <p>rpcStudentCount: {debugLog.rpcStudentCount}</p>}
+                  </>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-1.5 bg-amber-200 rounded text-amber-900 text-xs font-medium"
+                  onClick={async () => {
+                    const code = normalizeJoinCode(joinCode);
+                    const r = await studentService.debugValidateCodeOnly(code);
+                    setDebugToolResult(JSON.stringify(r, null, 2));
+                  }}
+                >
+                  코드만 검증
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 bg-amber-200 rounded text-amber-900 text-xs font-medium"
+                  onClick={async () => {
+                    const code = normalizeJoinCode(joinCode);
+                    const roster = await studentService.fetchRosterByJoinCode(code).catch(() => []);
+                    const normalizedInput = normalizeStudentNameForCompare(studentName.trim());
+                    const matched = roster.find((s) => normalizeStudentNameForCompare(s.name) === normalizedInput);
+                    setDebugToolResult(JSON.stringify({ rosterLength: roster.length, matched: !!matched, inputNameLength: studentName.length }, null, 2));
+                  }}
+                >
+                  이름만 명부 매칭
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 bg-amber-200 rounded text-amber-900 text-xs font-medium"
+                  onClick={async () => {
+                    const code = normalizeJoinCode(joinCode);
+                    const summary = await studentService.debugGetRpcRawSummary(code);
+                    setDebugToolResult(JSON.stringify(summary, null, 2));
+                  }}
+                >
+                  RPC raw 요약
+                </button>
+              </div>
+              {debugToolResult && <pre className="mt-2 p-2 bg-white rounded text-xs overflow-auto max-h-24">{debugToolResult}</pre>}
+            </div>
+          )}
         </form>
       </div>
     </div>

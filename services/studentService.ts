@@ -386,6 +386,37 @@ export const fetchRosterByJoinCode = async (joinCode: string): Promise<ClassStud
   return normalizeRoster(mapped);
 };
 
+const RPC_NAME = 'get_class_and_roster_by_join_code';
+
+/** ?debugJoin=1 전용: 코드만 검증, 명부 인원 수 반환 */
+export async function debugValidateCodeOnly(
+  joinCode: string
+): Promise<{ ok: true; studentCount: number } | { ok: false; reason: string }> {
+  if (!supabase) return { ok: false, reason: 'SERVER_ERROR' };
+  const normalized = normalizeJoinCode(joinCode);
+  if (!normalized) return { ok: false, reason: 'CODE_EMPTY' };
+  const { data: payload, error } = await supabase.rpc(RPC_NAME, { p_join_code: normalized });
+  if (error) return { ok: false, reason: 'RPC_ERROR' };
+  if (!payload?.id) return { ok: false, reason: 'CODE_NOT_FOUND' };
+  const count = Array.isArray(payload.students) ? payload.students.length : 0;
+  return { ok: true, studentCount: count };
+}
+
+/** ?debugJoin=1 전용: RPC raw 응답 요약 (민감정보 제외) */
+export async function debugGetRpcRawSummary(
+  joinCode: string
+): Promise<{ hasPayload: boolean; classIdPrefix?: string; studentCount: number; rpcError?: string }> {
+  if (!supabase) return { hasPayload: false, studentCount: 0, rpcError: 'no-client' };
+  const normalized = normalizeJoinCode(joinCode);
+  if (!normalized) return { hasPayload: false, studentCount: 0, rpcError: 'empty-code' };
+  const { data: payload, error } = await supabase.rpc(RPC_NAME, { p_join_code: normalized });
+  if (error) return { hasPayload: false, studentCount: 0, rpcError: error.message || error.code };
+  if (!payload) return { hasPayload: false, studentCount: 0 };
+  const studentCount = Array.isArray(payload.students) ? payload.students.length : 0;
+  const classIdPrefix = payload.id ? String(payload.id).slice(0, 8) + '...' : undefined;
+  return { hasPayload: true, classIdPrefix, studentCount };
+}
+
 // Helper to reset to default (with samples)
 export const resetRoster = () => {
     const classId = getCurrentClassId();

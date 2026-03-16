@@ -6,6 +6,7 @@ export const StudentJoinFailureReason = {
   CODE_EMPTY: 'CODE_EMPTY',
   CODE_NOT_FOUND: 'CODE_NOT_FOUND',
   RPC_ERROR: 'RPC_ERROR',
+  ROSTER_EMPTY: 'ROSTER_EMPTY',
   STUDENT_NAME_NOT_FOUND: 'STUDENT_NAME_NOT_FOUND',
   CLASS_FULL: 'CLASS_FULL',
   SERVER_ERROR: 'SERVER_ERROR',
@@ -21,6 +22,8 @@ export function getStudentJoinFailureMessage(reason: StudentJoinFailureReasonTyp
       return '참여 코드를 입력해주세요.';
     case StudentJoinFailureReason.CODE_NOT_FOUND:
       return '입력한 참여 코드를 찾을 수 없습니다. 코드를 확인해 주세요.';
+    case StudentJoinFailureReason.ROSTER_EMPTY:
+      return '학급 명부가 등록되지 않았습니다. 선생님께 문의해 주세요.';
     case StudentJoinFailureReason.RPC_ERROR:
       return '참여 코드를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.';
     case StudentJoinFailureReason.STUDENT_NAME_NOT_FOUND:

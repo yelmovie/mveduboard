@@ -292,19 +292,20 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
             </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <table className="w-full">
+        <div className="flex-1 overflow-y-auto overflow-x-auto p-6 bg-gray-50">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto min-w-0">
+                <div className="overflow-x-auto overflow-y-visible">
+                    <table className="w-full min-w-[720px]">
                     <thead className="bg-gray-100 border-b border-gray-200">
                         <tr>
-                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">번호</th>
-                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600">이름</th>
-                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">성별</th>
-                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-28">생년월일</th>
-                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">이전학년반</th>
-                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-24">형제자매</th>
-                            <th className="py-3 px-4 text-left text-sm font-bold text-gray-600 w-28">비고</th>
-                            <th className="py-3 px-4 text-center text-sm font-bold text-gray-600 w-20">삭제</th>
+                            <th className="py-3 px-3 text-left text-sm font-bold text-gray-600 whitespace-nowrap w-20">번호</th>
+                            <th className="py-3 px-3 text-left text-sm font-bold text-gray-600 whitespace-nowrap min-w-[100px]">이름</th>
+                            <th className="py-3 px-3 text-left text-sm font-bold text-gray-600 whitespace-nowrap w-20">성별</th>
+                            <th className="py-3 px-3 text-left text-sm font-bold text-gray-600 whitespace-nowrap min-w-[110px]">생년월일</th>
+                            <th className="py-3 px-3 text-left text-sm font-bold text-gray-600 whitespace-nowrap min-w-[90px]">이전학년반</th>
+                            <th className="py-3 px-3 text-left text-sm font-bold text-gray-600 whitespace-nowrap min-w-[80px]">형제자매</th>
+                            <th className="py-3 px-3 text-left text-sm font-bold text-gray-600 whitespace-nowrap min-w-[80px]">비고</th>
+                            <th className="py-3 px-3 text-center text-sm font-bold text-gray-600 whitespace-nowrap w-16">삭제</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -323,12 +324,12 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                                         className="w-full border rounded px-2 py-1 text-center font-mono font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
                                     />
                                 </td>
-                                <td className="p-3">
+                                <td className="p-3 min-w-[100px]">
                                     <input 
                                         type="text" 
                                         value={student.name}
                                         onChange={(e) => handleUpdate(student.id, 'name', e.target.value)}
-                                        className="w-full border rounded px-2 py-1 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-gray-800"
+                                        className="w-full min-w-[4rem] border rounded px-2 py-1 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-gray-800"
                                     />
                                 </td>
                                 <td className="p-3">
@@ -395,6 +396,7 @@ export const StudentRosterModal: React.FC<StudentRosterModalProps> = ({ onClose 
                         )}
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
 

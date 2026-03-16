@@ -12,3 +12,11 @@ export function maskJoinCodeForLog(code: string): string {
   if (n.length <= 3) return '***';
   return `${n.slice(0, 2)}***${n.slice(-1)}`;
 }
+
+/**
+ * 학생 이름 비교용 정규화 — trim + 연속 공백 제거(한글 이름 임의 변경 금지).
+ * 명부의 name 필드와 입력값을 동일 규칙으로 비교할 때 사용.
+ */
+export function normalizeStudentNameForCompare(name: string): string {
+  return (name ?? '').trim().replace(/\s+/g, '');
+}
