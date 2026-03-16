@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { X, UserCircle } from 'lucide-react';
-import * as api from '../services/boardService';
 import * as studentService from '../services/studentService';
 import { Participant } from '../types';
 import { studentJoinWithCode } from '../src/lib/supabase/auth';
@@ -125,27 +124,16 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({ onClose, o
         onClose();
         return;
       } catch (supabaseError: any) {
-        try {
-          // 이미 참여 코드·명부 검증 완료된 상태에서 Supabase 가입만 실패한 경우 로컬 세션으로 입장 허용
-          const p = await api.joinBoard(code, displayName, { skipCodeCheck: true });
-          if (p) {
-            await logBetaEvent('join_success');
-            onLoginSuccess(p);
-            onClose();
-            return;
-          }
-        } catch {
-          // Fallback: local session for offline/권한 제한 상황
-          const fallbackParticipant: Participant = {
-            id: generateUUID(),
-            nickname: displayName,
-            session_hash: generateUUID(),
-          };
-          localStorage.setItem('edu_participant_session', JSON.stringify(fallbackParticipant));
-          await logBetaEvent('join_success');
-          onLoginSuccess(fallbackParticipant);
-          onClose();
-        }
+        // 코드·명부 검증은 이미 통과했으므로 Supabase 가입 실패 시에도 로컬 세션으로 입장 허용 (joinBoard 호출 제거로 구 빌드에서 "참여 코드가 올바르지 않습니다" 방지)
+        const fallbackParticipant: Participant = {
+          id: generateUUID(),
+          nickname: displayName,
+          session_hash: generateUUID(),
+        };
+        localStorage.setItem('edu_participant_session', JSON.stringify(fallbackParticipant));
+        await logBetaEvent('join_success');
+        onLoginSuccess(fallbackParticipant);
+        onClose();
       }
     } catch (err: any) {
       const reason = err?.message?.includes('참여 코드를 찾을 수 없습니다')
