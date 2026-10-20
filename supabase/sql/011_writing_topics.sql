@@ -52,3 +52,6 @@ create policy "writing_topics_teacher_delete"
 grant select on public.writing_topics to anon, authenticated;
 
 select pg_notify('pgrst', 'reload schema');
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+grant insert, update, delete on table public.writing_topics to authenticated;

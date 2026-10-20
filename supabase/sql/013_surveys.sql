@@ -388,3 +388,11 @@ create policy "survey_attachments_student_insert"
   );
 
 select pg_notify('pgrst', 'reload schema');
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+grant select, insert, update, delete on table public.surveys to authenticated;
+grant select, insert, update, delete on table public.survey_questions to authenticated;
+grant select, insert, update, delete on table public.survey_choices to authenticated;
+grant select, insert on table public.survey_responses to authenticated;
+grant select, insert on table public.survey_answers to authenticated;
+grant select, insert on table public.survey_attachments to authenticated;

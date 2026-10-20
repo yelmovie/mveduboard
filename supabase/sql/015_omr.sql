@@ -303,3 +303,10 @@ end;
 $$;
 
 select pg_notify('pgrst', 'reload schema');
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+grant select, insert, update, delete on table public.omr_assignments to authenticated;
+grant select, insert, update, delete on table public.omr_answer_keys to authenticated;
+grant select on table public.omr_submissions to authenticated;
+grant select on table public.omr_submission_answers to authenticated;
+grant select, insert, update, delete on table public.omr_overrides to authenticated;
