@@ -24,3 +24,6 @@ create policy "quota_owner_update"
   for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+grant select, insert, update on table public.upload_quota_daily to authenticated;

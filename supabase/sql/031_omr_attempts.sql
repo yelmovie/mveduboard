@@ -64,3 +64,6 @@ using (user_id = auth.uid() and is_complete = false)
 with check (user_id = auth.uid() and is_complete = false);
 
 select pg_notify('pgrst', 'reload schema');
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+grant select, insert, update on table public.omr_attempts to authenticated;

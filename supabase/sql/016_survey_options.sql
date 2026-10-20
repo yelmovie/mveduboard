@@ -63,3 +63,6 @@ begin
 end $$;
 
 select pg_notify('pgrst', 'reload schema');
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+grant select, insert, update, delete on table public.survey_options to authenticated;

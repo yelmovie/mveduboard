@@ -39,3 +39,16 @@ create table if not exists public.post_images (
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '90 days')
 );
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+alter table public.schools enable row level security;
+alter table public.classes enable row level security;
+alter table public.profiles enable row level security;
+alter table public.posts enable row level security;
+alter table public.post_images enable row level security;
+grant select, insert, update on table public.schools to authenticated;
+grant select, insert, update on table public.classes to authenticated;
+grant select, insert on table public.profiles to authenticated;
+grant update (display_name, school_id, class_id) on table public.profiles to authenticated;
+grant select, insert, delete on table public.posts to authenticated;
+grant select, insert on table public.post_images to authenticated;

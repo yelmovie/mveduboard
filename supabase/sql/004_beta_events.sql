@@ -16,3 +16,6 @@ create policy "beta_events_owner_write"
   on public.beta_events
   for insert
   with check (auth.uid() = user_id);
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+grant select, insert on table public.beta_events to authenticated;

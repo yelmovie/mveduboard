@@ -48,3 +48,6 @@ create policy "students_delete_own"
 
 -- Refresh PostgREST schema cache
 select pg_notify('pgrst', 'reload schema');
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+grant select, insert, update, delete on table public.students to authenticated;

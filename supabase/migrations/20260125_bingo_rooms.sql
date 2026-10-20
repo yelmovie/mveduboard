@@ -64,3 +64,8 @@ create policy "bingo boards write" on public.bingo_boards
 
 create policy "bingo boards update" on public.bingo_boards
   for update using (true);
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+grant select, insert, update on table public.bingo_rooms to anon, authenticated;
+grant select, insert on table public.bingo_players to anon, authenticated;
+grant select, insert, update on table public.bingo_boards to anon, authenticated;
